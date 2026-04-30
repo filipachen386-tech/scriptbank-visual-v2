@@ -9,94 +9,108 @@ export default {
       return handleApi(request, env, url);
     }
 
+    if (!env.ASSETS || typeof env.ASSETS.fetch !== "function") {
+      return new Response("Assets binding is unavailable.", { status: 500 });
+    }
+
     return env.ASSETS.fetch(request);
   },
 };
 
 async function handleApi(request, env, url) {
-  if (request.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders() });
-  }
-
-  if (url.pathname === "/api/scripts" && request.method === "GET") {
-    await ensureSchema(env);
-    const scripts = await listScripts(env);
-    return json({ scripts });
-  }
-
-  if (url.pathname === "/api/auth-status" && request.method === "GET") {
-    return json({ authenticated: isAuthenticated(request) });
-  }
-
-  if (url.pathname === "/api/login" && request.method === "POST") {
-    const body = await request.json().catch(() => ({}));
-    const password = String(body.password || "").trim();
-    if (password !== String(env.UPLOAD_PASSWORD || DEFAULT_PASSWORD)) {
-      return json({ error: "Senha incorreta." }, 403);
+  try {
+    if (request.method === "OPTIONS") {
+      return new Response(null, { headers: corsHeaders() });
     }
+
+    if (url.pathname === "/api/scripts" && request.method === "GET") {
+      await ensureSchema(env);
+      const scripts = await listScripts(env);
+      return json({ scripts });
+    }
+
+    if (url.pathname === "/api/auth-status" && request.method === "GET") {
+      return json({ authenticated: isAuthenticated(request) });
+    }
+
+    if (url.pathname === "/api/login" && request.method === "POST") {
+      const body = await request.json().catch(() => ({}));
+      const password = String(body.password || "").trim();
+      if (password !== String(env.UPLOAD_PASSWORD || DEFAULT_PASSWORD)) {
+        return json({ error: "Senha incorreta." }, 403);
+      }
+      return json(
+        { ok: true },
+        200,
+        {
+          "Set-Cookie": `${COOKIE_NAME}=ok; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000`,
+        },
+      );
+    }
+
+    if (url.pathname === "/api/logout" && request.method === "POST") {
+      return json(
+        { ok: true },
+        200,
+        {
+          "Set-Cookie": `${COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`,
+        },
+      );
+    }
+
+    if (!isAuthenticated(request)) {
+      return json({ error: "Unauthorized" }, 403);
+    }
+
+    if (url.pathname === "/api/import-markdown" && request.method === "POST") {
+      await ensureSchema(env);
+      const body = await request.json().catch(() => ({}));
+      const markdown = String(body.markdown || "");
+      const scripts = parseMarkdownScripts(markdown);
+      if (!scripts.length) {
+        return json({ error: "Nenhum bloco de script reconhecido foi encontrado no Markdown." }, 400);
+      }
+      for (const script of scripts) {
+        await upsertScript(env, script);
+      }
+      return json({ ok: true, count: scripts.length });
+    }
+
+    if (url.pathname === "/api/import-json" && request.method === "POST") {
+      await ensureSchema(env);
+      const body = await request.json().catch(() => ({}));
+      const list = Array.isArray(body?.scripts) ? body.scripts : [];
+      if (!list.length) {
+        return json({ error: "JSON inválido: scripts não encontrados." }, 400);
+      }
+      const normalized = list.map(normalizeImportedScript).filter(Boolean);
+      for (const script of normalized) {
+        await upsertScript(env, script);
+      }
+      return json({ ok: true, count: normalized.length });
+    }
+
+    if (url.pathname === "/api/delete-script" && request.method === "POST") {
+      await ensureSchema(env);
+      const body = await request.json().catch(() => ({}));
+      const scriptId = String(body.script_id || "").trim();
+      if (!scriptId) {
+        return json({ error: "script_id é obrigatório." }, 400);
+      }
+      await env.DB.prepare("DELETE FROM scripts WHERE id = ?").bind(scriptId).run();
+      return json({ ok: true });
+    }
+
+    return json({ error: "Not found" }, 404);
+  } catch (error) {
     return json(
-      { ok: true },
-      200,
       {
-        "Set-Cookie": `${COOKIE_NAME}=ok; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000`,
+        error: error && error.message ? error.message : "Worker threw exception.",
+        stack: error && error.stack ? String(error.stack).split("\n").slice(0, 6) : [],
       },
+      500,
     );
   }
-
-  if (url.pathname === "/api/logout" && request.method === "POST") {
-    return json(
-      { ok: true },
-      200,
-      {
-        "Set-Cookie": `${COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`,
-      },
-    );
-  }
-
-  if (!isAuthenticated(request)) {
-    return json({ error: "Unauthorized" }, 403);
-  }
-
-  if (url.pathname === "/api/import-markdown" && request.method === "POST") {
-    await ensureSchema(env);
-    const body = await request.json().catch(() => ({}));
-    const markdown = String(body.markdown || "");
-    const scripts = parseMarkdownScripts(markdown);
-    if (!scripts.length) {
-      return json({ error: "Nenhum bloco # SCRIPT foi encontrado." }, 400);
-    }
-    for (const script of scripts) {
-      await upsertScript(env, script);
-    }
-    return json({ ok: true, count: scripts.length });
-  }
-
-  if (url.pathname === "/api/import-json" && request.method === "POST") {
-    await ensureSchema(env);
-    const body = await request.json().catch(() => ({}));
-    const list = Array.isArray(body?.scripts) ? body.scripts : [];
-    if (!list.length) {
-      return json({ error: "JSON inválido: scripts não encontrados." }, 400);
-    }
-    const normalized = list.map(normalizeImportedScript).filter(Boolean);
-    for (const script of normalized) {
-      await upsertScript(env, script);
-    }
-    return json({ ok: true, count: normalized.length });
-  }
-
-  if (url.pathname === "/api/delete-script" && request.method === "POST") {
-    await ensureSchema(env);
-    const body = await request.json().catch(() => ({}));
-    const scriptId = String(body.script_id || "").trim();
-    if (!scriptId) {
-      return json({ error: "script_id é obrigatório." }, 400);
-    }
-    await env.DB.prepare("DELETE FROM scripts WHERE id = ?").bind(scriptId).run();
-    return json({ ok: true });
-  }
-
-  return json({ error: "Not found" }, 404);
 }
 
 function corsHeaders() {
@@ -136,8 +150,12 @@ function isAuthenticated(request) {
 }
 
 async function ensureSchema(env) {
-  await env.DB.exec(`
-    CREATE TABLE IF NOT EXISTS scripts (
+  if (!env.DB) {
+    throw new Error("D1 binding DB is unavailable.");
+  }
+
+  const statements = [
+    `CREATE TABLE IF NOT EXISTS scripts (
       id TEXT PRIMARY KEY,
       created_at TEXT NOT NULL,
       title TEXT NOT NULL,
@@ -146,12 +164,16 @@ async function ensureSchema(env) {
       category TEXT,
       source_url TEXT,
       data_json TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_scripts_created_at ON scripts(created_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_scripts_month ON scripts(month);
-    CREATE INDEX IF NOT EXISTS idx_scripts_grand_theme ON scripts(grand_theme);
-    CREATE INDEX IF NOT EXISTS idx_scripts_category ON scripts(category);
-  `);
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_scripts_created_at ON scripts(created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_scripts_month ON scripts(month)",
+    "CREATE INDEX IF NOT EXISTS idx_scripts_grand_theme ON scripts(grand_theme)",
+    "CREATE INDEX IF NOT EXISTS idx_scripts_category ON scripts(category)",
+  ];
+
+  for (const sql of statements) {
+    await env.DB.exec(sql);
+  }
 }
 
 async function listScripts(env) {
