@@ -14,13 +14,12 @@ export default {
 };
 
 async function handleApi(request, env, url) {
-  await ensureSchema(env);
-
   if (request.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders() });
   }
 
   if (url.pathname === "/api/scripts" && request.method === "GET") {
+    await ensureSchema(env);
     const scripts = await listScripts(env);
     return json({ scripts });
   }
@@ -59,6 +58,7 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/import-markdown" && request.method === "POST") {
+    await ensureSchema(env);
     const body = await request.json().catch(() => ({}));
     const markdown = String(body.markdown || "");
     const scripts = parseMarkdownScripts(markdown);
@@ -72,6 +72,7 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/import-json" && request.method === "POST") {
+    await ensureSchema(env);
     const body = await request.json().catch(() => ({}));
     const list = Array.isArray(body?.scripts) ? body.scripts : [];
     if (!list.length) {
@@ -85,6 +86,7 @@ async function handleApi(request, env, url) {
   }
 
   if (url.pathname === "/api/delete-script" && request.method === "POST") {
+    await ensureSchema(env);
     const body = await request.json().catch(() => ({}));
     const scriptId = String(body.script_id || "").trim();
     if (!scriptId) {
