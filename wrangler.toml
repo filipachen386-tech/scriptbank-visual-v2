@@ -1,0 +1,15 @@
+name = "scriptbank-visual-free"
+main = "src/worker.js"
+compatibility_date = "2026-04-30"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "scriptbank-db"
+
+[vars]
+UPLOAD_PASSWORD = "kwai666"
