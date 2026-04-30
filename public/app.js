@@ -266,8 +266,12 @@ async function submitLogin() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ password }),
   });
+  let data = {};
+  try {
+    data = await response.json();
+  } catch {}
   if (!response.ok) {
-    els.passwordError.textContent = "Senha incorreta. Tente novamente.";
+    els.passwordError.textContent = data.error || "Senha incorreta. Tente novamente.";
     els.passwordError.classList.remove("hidden");
     return;
   }
