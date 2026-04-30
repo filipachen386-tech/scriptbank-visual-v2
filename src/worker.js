@@ -393,9 +393,118 @@ function parseMarkdownScripts(markdownText) {
   const text = String(markdownText || "").replace(/\r\n/g, "\n").trim();
   if (!text) return [];
   const blocks = text.split(/(?=^#\s+SCRIPT\b)/gim).map((block) => block.trim()).filter(Boolean);
-  return blocks.map(parseScriptBlock).filter(Boolean);
+  if (blocks.length) {
+    return blocks.map(parseScriptBlock).filter(Boolean);
+  }
+  return parseLegacyMarkdownScripts(text);
 }
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function parseLegacyMarkdownScripts(text) {
+  let currentCategory = "";
+  let currentViral = "";
+  let currentTitle = "";
+  let currentLines = [];
+  const scripts = [];
+
+  function flushCurrent() {
+    if (!currentTitle) return;
+    const blockText = currentLines.join("\n").trim();
+    scripts.push(...splitLegacyTitleGroupIntoScripts(currentCategory, currentViral, currentTitle, blockText));
+    currentTitle = "";
+    currentLines = [];
+  }
+
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.replace(/\s+$/, "");
+    const titleMatch = line.match(/^###\s+\*\*(.+?)\*\*\s*$/) || line.match(/^###\s+(.+)$/);
+    const viralMatch = !line.startsWith("###") ? line.match(/^##\s+(.+)$/) : null;
+    const categoryMatch = !line.startsWith("##") ? line.match(/^#\s+(.+)$/) : null;
+
+    if (titleMatch) {
+      flushCurrent();
+      currentTitle = String(titleMatch[1] || "").trim();
+      currentLines = [line];
+      continue;
+    }
+
+    if (viralMatch) {
+      flushCurrent();
+      currentViral = String(viralMatch[1] || "").trim();
+      continue;
+    }
+
+    if (categoryMatch) {
+      flushCurrent();
+      currentCategory = String(categoryMatch[1] || "").trim();
+      continue;
+    }
+
+    if (currentTitle) {
+      currentLines.push(line);
+    }
+  }
+
+  flushCurrent();
+  return scripts.filter(Boolean);
+}
+
+function splitLegacyTitleGroupIntoScripts(category, viralTheme, title, blockText) {
+  const linkMatches = [...blockText.matchAll(/^(?:link\d*|link)\s*:\s*.*$/gim)];
+  if (!linkMatches.length) {
+    const single = parseLegacyScriptBlock(category, viralTheme, title, blockText);
+    return single ? [single] : [];
+  }
+
+  const scripts = [];
+  for (let index = 0; index < linkMatches.length; index += 1) {
+    const start = linkMatches[index].index || 0;
+    const end = index + 1 < linkMatches.length ? linkMatches[index + 1].index || blockText.length : blockText.length;
+    const segment = blockText.slice(start, end).trim();
+    const parsed = parseLegacyScriptBlock(category, viralTheme, title, segment);
+    if (parsed) scripts.push(parsed);
+  }
+  return scripts;
+}
+
+function parseLegacyScriptBlock(category, viralTheme, title, blockText) {
+  const profilesText = extractSection(
+    blockText,
+    numberedSectionPattern(1, "Perfis de Personagem"),
+    [numberedSectionPattern(2, "Ritmo \\(Timeline\\)"), numberedSectionPattern(3, "Elementos Substituíveis")],
+  );
+  const timelineText = extractSection(
+    blockText,
+    numberedSectionPattern(2, "Ritmo \\(Timeline\\)"),
+    [numberedSectionPattern(3, "Elementos Substituíveis")],
+  );
+  const replaceableText = extractSection(
+    blockText,
+    numberedSectionPattern(3, "Elementos Substituíveis"),
+    [],
+  );
+
+  const characterProfiles = profilesText.split(/\r?\n/).map(normalizeMarkdownLine).filter(Boolean);
+  const timeline = timelineText.split(/\r?\n/).map(normalizeMarkdownLine).filter(Boolean);
+  const replaceableSections = parseReplaceableSections(replaceableText);
+  const replaceableElements = replaceableSections.flatMap((section) => section.items || []);
+
+  return normalizeImportedScript({
+    title: String(title || "").trim(),
+    month: "",
+    grand_theme: String(category || "").trim(),
+    category: String(viralTheme || "").trim(),
+    viral_theme: String(viralTheme || "").trim(),
+    source_url: extractFirstLink(blockText),
+    hook: timeline[0] || "",
+    summary: [category, viralTheme, title].filter(Boolean).join(" | "),
+    character_profiles: characterProfiles,
+    timeline,
+    replaceable_elements: replaceableElements,
+    replaceable_sections: replaceableSections,
+    notes: [],
+  });
 }
