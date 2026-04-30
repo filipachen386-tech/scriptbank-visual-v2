@@ -287,20 +287,32 @@ async function importMarkdown() {
     showFlash("Cole um Markdown antes de importar.", true);
     return;
   }
-  const response = await fetch("/api/import-markdown", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ markdown }),
-  });
-  const data = await response.json();
-  if (!response.ok) {
-    showFlash(data.error || "Falha ao importar Markdown.", true);
-    return;
+  els.importMarkdownButton.disabled = true;
+  els.importMarkdownButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Importando...';
+  try {
+    const response = await fetch("/api/import-markdown", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ markdown }),
+    });
+    let data = {};
+    try {
+      data = await response.json();
+    } catch {}
+    if (!response.ok) {
+      showFlash(data.error || "Falha ao importar Markdown.", true);
+      return;
+    }
+    els.markdownContent.value = "";
+    els.markdownFile.value = "";
+    showFlash(`${data.count} scripts importados com sucesso.`);
+    await refreshScripts();
+  } catch (error) {
+    showFlash(`Falha de rede ao importar Markdown: ${error?.message || "erro desconhecido"}`, true);
+  } finally {
+    els.importMarkdownButton.disabled = false;
+    els.importMarkdownButton.innerHTML = '<i class="fa-solid fa-file-import"></i> Importar Markdown';
   }
-  els.markdownContent.value = "";
-  els.markdownFile.value = "";
-  showFlash(`${data.count} scripts importados com sucesso.`);
-  await refreshScripts();
 }
 
 async function importJson() {
@@ -346,6 +358,7 @@ function showFlash(message, isError = false) {
   els.flash.className = `mb-6 ${isError ? "bg-red-50 border border-red-200 text-red-700" : "bg-emerald-50 border border-emerald-200 text-emerald-700"} px-5 py-4 rounded-xl card-shadow`;
   els.flash.textContent = message;
   els.flash.classList.remove("hidden");
+  els.flash.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function renderTags(tags) {
