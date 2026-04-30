@@ -28,7 +28,7 @@ Cloudflare Workers + D1 version of ScriptBank Visual.
 ## Local dev with Wrangler
 
 ```bash
-npm install -g wrangler
+npm install -g wrangler 
 wrangler dev
 ```
 
