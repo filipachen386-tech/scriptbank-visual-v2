@@ -155,16 +155,7 @@ async function ensureSchema(env) {
   }
 
   const statements = [
-    `CREATE TABLE IF NOT EXISTS scripts (
-      id TEXT PRIMARY KEY,
-      created_at TEXT NOT NULL,
-      title TEXT NOT NULL,
-      month TEXT,
-      grand_theme TEXT,
-      category TEXT,
-      source_url TEXT,
-      data_json TEXT NOT NULL
-    )`,
+    "CREATE TABLE IF NOT EXISTS scripts (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, title TEXT NOT NULL, month TEXT, grand_theme TEXT, category TEXT, source_url TEXT, data_json TEXT NOT NULL)",
     "CREATE INDEX IF NOT EXISTS idx_scripts_created_at ON scripts(created_at)",
     "CREATE INDEX IF NOT EXISTS idx_scripts_month ON scripts(month)",
     "CREATE INDEX IF NOT EXISTS idx_scripts_grand_theme ON scripts(grand_theme)",
@@ -172,7 +163,7 @@ async function ensureSchema(env) {
   ];
 
   for (const sql of statements) {
-    await env.DB.exec(sql);
+    await env.DB.prepare(sql).run();
   }
 }
 
