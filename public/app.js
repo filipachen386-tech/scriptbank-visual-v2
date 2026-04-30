@@ -72,8 +72,7 @@ function bindEvents() {
 }
 
 async function refreshAuth() {
-  const response = await fetch("/api/auth-status");
-  const data = await response.json();
+  const data = await apiFetchJson("/api/auth-status");
   state.authenticated = !!data.authenticated;
   els.logoutButton.classList.toggle("hidden", !state.authenticated);
   if (!state.authenticated) {
@@ -82,8 +81,7 @@ async function refreshAuth() {
 }
 
 async function refreshScripts() {
-  const response = await fetch("/api/scripts");
-  const data = await response.json();
+  const data = await apiFetchJson("/api/scripts");
   state.scripts = Array.isArray(data.scripts) ? data.scripts : [];
   populateFilters();
   applyFilters();
@@ -261,17 +259,14 @@ function renderScripts() {
 async function submitLogin() {
   const password = els.passwordInput.value.trim();
   els.passwordError.classList.add("hidden");
-  const response = await fetch("/api/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ password }),
-  });
-  let data = {};
   try {
-    data = await response.json();
-  } catch {}
-  if (!response.ok) {
-    els.passwordError.textContent = data.error || "Senha incorreta. Tente novamente.";
+    await apiFetchJson("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+  } catch (error) {
+    els.passwordError.textContent = error?.message || "Senha incorreta. Tente novamente.";
     els.passwordError.classList.remove("hidden");
     return;
   }
@@ -290,19 +285,11 @@ async function importMarkdown() {
   els.importMarkdownButton.disabled = true;
   els.importMarkdownButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Importando...';
   try {
-    const response = await fetch("/api/import-markdown", {
+    const data = await apiFetchJson("/api/import-markdown", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ markdown }),
     });
-    let data = {};
-    try {
-      data = await response.json();
-    } catch {}
-    if (!response.ok) {
-      showFlash(data.error || "Falha ao importar Markdown.", true);
-      return;
-    }
     els.markdownContent.value = "";
     els.markdownFile.value = "";
     showFlash(`${data.count} scripts importados com sucesso.`);
@@ -329,19 +316,19 @@ async function importJson() {
     showFlash("JSON inválido.", true);
     return;
   }
-  const response = await fetch("/api/import-json", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const data = await response.json();
-  if (!response.ok) {
-    showFlash(data.error || "Falha ao importar JSON.", true);
+  try {
+    const data = await apiFetchJson("/api/import-json", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    els.jsonFile.value = "";
+    showFlash(`${data.count} scripts importados com sucesso do JSON.`);
+    await refreshScripts();
+  } catch (error) {
+    showFlash(error?.message || "Falha ao importar JSON.", true);
     return;
   }
-  els.jsonFile.value = "";
-  showFlash(`${data.count} scripts importados com sucesso do JSON.`);
-  await refreshScripts();
 }
 
 function openModal() {
@@ -359,6 +346,39 @@ function showFlash(message, isError = false) {
   els.flash.textContent = message;
   els.flash.classList.remove("hidden");
   els.flash.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function apiFetchJson(url, options = {}) {
+  const response = await fetch(url, options);
+  const contentType = response.headers.get("content-type") || "";
+  let data = null;
+  let text = "";
+
+  if (contentType.includes("application/json")) {
+    data = await response.json().catch(() => null);
+  } else {
+    text = await response.text().catch(() => "");
+  }
+
+  if (!response.ok) {
+    const error = new Error(
+      data?.error ||
+        extractHtmlTitle(text) ||
+        `HTTP ${response.status}`,
+    );
+    error.status = response.status;
+    error.payload = data;
+    error.rawText = text;
+    throw error;
+  }
+
+  if (data) return data;
+  throw new Error("Resposta não veio em JSON.");
+}
+
+function extractHtmlTitle(text) {
+  const titleMatch = String(text || "").match(/<title>([^<]+)<\/title>/i);
+  return titleMatch ? titleMatch[1].trim() : "";
 }
 
 function renderTags(tags) {
