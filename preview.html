@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ScriptBank Visual — Preview Local</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <style>
+    body { background: #f8fafc; font-family: Inter, sans-serif; }
+    .card-shadow { box-shadow: 0 4px 6px -1px rgba(0,0,0,.1), 0 2px 4px -1px rgba(0,0,0,.06); }
+    .script-content { display: none; }
+    .script-card.active .script-content { display: block; }
+    .script-card.active .chevron-icon { transform: rotate(180deg); }
+    .copy-toast { visibility: hidden; min-width: 220px; margin-left: -110px; background-color: #333; color: #fff; text-align: center; border-radius: 8px; padding: 12px; position: fixed; z-index: 100; left: 50%; bottom: 30px; }
+    .copy-toast.show { visibility: visible; animation: fadein .5s, fadeout .5s 2.5s; }
+    @keyframes fadein { from { bottom: 0; opacity: 0; } to { bottom: 30px; opacity: 1; } }
+    @keyframes fadeout { from { bottom: 30px; opacity: 1; } to { bottom: 0; opacity: 0; } }
+  </style>
+</head>
+<body>
+  <div id="toast" class="copy-toast">Link copiado!</div>
+
+  <header class="bg-white border-b sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4">
+      <div class="flex justify-between items-center h-16 gap-4">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-scroll text-blue-600 text-2xl"></i>
+          <h1 class="text-xl font-bold text-gray-800">ScriptBank <span class="text-blue-600">Visual</span></h1>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs font-semibold border border-yellow-200">⚡ Preview Local</span>
+          <button id="toggle-import" class="bg-orange-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-orange-600 transition">
+            <i class="fa-solid fa-plus"></i> Importar Script
+          </button>
+          <button id="clear-all" class="hidden text-red-600 bg-white px-4 py-2 rounded-lg border border-red-200 font-medium hover:bg-red-50 transition">
+            <i class="fa-solid fa-trash"></i> Limpar tudo
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-8 pb-20">
+
+    <!-- Import panel -->
+    <section id="import-panel" class="hidden mb-8">
+      <article class="bg-white rounded-2xl card-shadow overflow-hidden border border-gray-100">
+        <div class="p-6 bg-gradient-to-r from-slate-50 to-white border-b flex justify-between items-center">
+          <div>
+            <h2 class="text-xl font-bold text-gray-900 uppercase">Importar Markdown</h2>
+            <p class="text-gray-500 text-sm italic mt-1">Cole o script abaixo ou carregue um arquivo .md</p>
+          </div>
+          <button id="close-import" class="text-gray-400 hover:text-gray-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+        </div>
+        <div class="p-6 space-y-4">
+          <input id="md-file" type="file" accept=".md,.markdown,.txt" class="w-full border rounded-lg p-3 bg-gray-50">
+          <textarea id="md-content" rows="14" class="w-full border rounded-lg p-3 bg-gray-50 font-mono text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="# SCRIPT 1&#10;&#10;**Mês:** Junho&#10;**Grande Tema:** Drama familiar&#10;**Categoria:** Tema viral&#10;**Título:** Filhinho da Mamãe&#10;**Link Exemplo:** https://...&#10;**Personagem Principal:** Homem Imaturo&#10;&#10;1. Perfis de Personagem&#10;..."></textarea>
+          <div class="flex items-center gap-3">
+            <button id="import-btn" class="bg-slate-800 text-white px-6 py-3 rounded-lg font-medium hover:bg-slate-900 transition">
+              <i class="fa-solid fa-file-import"></i> Importar
+            </button>
+            <span id="import-result" class="text-sm"></span>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <!-- Filter bar -->
+    <section class="bg-white p-6 rounded-xl card-shadow flex flex-wrap gap-4 items-end border border-gray-100 mb-4">
+      <div class="min-w-[220px] flex-1">
+        <label for="filter-keyword" class="block text-sm font-medium text-gray-700 mb-2">Palavra-chave</label>
+        <input id="filter-keyword" class="w-full border rounded-lg p-2.5 bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Buscar por título, resumo, tags...">
+      </div>
+      <div class="min-w-[160px]">
+        <label for="filter-month" class="block text-sm font-medium text-gray-700 mb-2">Mês</label>
+        <select id="filter-month" class="w-full border rounded-lg p-2.5 bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"></select>
+      </div>
+      <div class="min-w-[200px]">
+        <label for="filter-grand-theme" class="block text-sm font-medium text-gray-700 mb-2">Grande Tema</label>
+        <select id="filter-grand-theme" class="w-full border rounded-lg p-2.5 bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"></select>
+      </div>
+      <div class="min-w-[200px]">
+        <label for="filter-persona" class="block text-sm font-medium text-gray-700 mb-2">Personagem Principal</label>
+        <select id="filter-persona" class="w-full border rounded-lg p-2.5 bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"></select>
+      </div>
+      <div class="min-w-[180px]">
+        <label for="filter-category" class="block text-sm font-medium text-gray-700 mb-2">Categoria</label>
+        <select id="filter-category" class="w-full border rounded-lg p-2.5 bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"></select>
+      </div>
+    </section>
+
+    <div id="result-count" class="text-sm text-gray-400 mb-4 pl-1"></div>
+    <section id="scripts-container" class="space-y-6"></section>
+    <section id="empty-state" class="hidden bg-white rounded-2xl border border-dashed border-slate-300 p-10 text-center card-shadow">
+      <i class="fa-solid fa-scroll text-slate-300 text-4xl mb-4"></i>
+      <h3 class="text-2xl font-bold text-slate-800 mb-2">Nenhum script encontrado</h3>
+      <p class="text-slate-500 leading-7">Importe scripts pelo painel acima para começar.</p>
+    </section>
+  </main>
+
+  <script>
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PARSER — ported from worker.js
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function normalizeMarkdownLine(line) {
+    return String(line || "").trim()
+      .replace(/^\s*[-*]\s*/, "")
+      .replace(/^\s*\d+\.\s*/, "")
+      .replace(/\\\./g, ".")
+      .replace(/\\_/g, "_")
+      .replace(/\*\*(.*?)\*\*/g, "$1")   // paired bold
+      .replace(/\*([^*]+)\*/g, "$1")      // paired italic
+      .replace(/\*+/g, "")               // leftover lone asterisks
+      .replace(/\[(.*?)\]\((https?:\/\/[^\s)]+)\)/g, "$1: $2")
+      .replace(/\s{2,}$/g, "")
+      .trim();
+  }
+
+  function escapeRegExp(v) {
+    return String(v).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function extractMetadataRaw(blockText, fieldName) {
+    const pattern = new RegExp(`^\\s*\\*\\*${escapeRegExp(fieldName)}:\\*\\*\\s*(.+?)\\s*$`, "im");
+    const match = blockText.match(pattern);
+    return match ? match[1].trim() : "";
+  }
+
+  function extractMetadataValue(blockText, fieldName) {
+    return normalizeMarkdownLine(extractMetadataRaw(blockText, fieldName));
+  }
+
+  function extractFirstLink(text) {
+    const mm = text.match(/\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/);
+    if (mm) return mm[1].replace(/\\_/g, "_");
+    const um = text.match(/https?:\/\/[^\s)\]]+/);
+    return um ? um[0].replace(/\\_/g, "_") : "";
+  }
+
+  function numberedSectionPattern(number, label) {
+    return new RegExp(`^\\s*(?:\\*\\*)?#*\\s*${number}\\\\?\\.\\s*${label}(?:\\*\\*)?\\s*$`, "im");
+  }
+
+  function extractSection(markdownText, startPattern, endPatterns) {
+    const startMatch = markdownText.match(startPattern);
+    if (!startMatch || startMatch.index == null) return "";
+    const start = startMatch.index + startMatch[0].length;
+    let end = markdownText.length;
+    const slice = markdownText.slice(start);
+    for (const pattern of endPatterns) {
+      const match = slice.match(pattern);
+      if (match && match.index != null) end = Math.min(end, start + match.index);
+    }
+    return markdownText.slice(start, end).trim();
+  }
+
+  function parseReplaceableSections(sectionText) {
+    const pattern = /^\s*(?:[-*]\s*)?(?:\*\*)?(Conflito Central.*|Formas de Evidência.*|O Vínculo do Amante.*|O Plano Final da Vilã.*|Cenas de Impacto.*|Argumento de Defesa.*|A Prova de Amor.*|A Prova de Amor\/Sacrifício do Marido.*|Ações de Impacto.*|Cenários Sugeridos.*|O Ato de Cuidado.*|O Apoio Financeiro.*|Gesto de Segurança\/Proteção.*|Cenas Característica.*|Ameaças de "Bens".*|A Comparação Fatal.*|A Punição Final.*|Ações Característica.*|Tipo de dependência.*|Motivo da ruptura.*|Quem expõe a verdade.*|Forma da humilhação.*)(?:\*\*)?:?\s*$/gim;
+    const matches = [...sectionText.matchAll(pattern)];
+    if (!matches.length) {
+      const fallback = sectionText.split(/\r?\n/).map(normalizeMarkdownLine).filter(Boolean);
+      return fallback.length ? [{ title: "Elementos Substituíveis", items: fallback }] : [];
+    }
+    const sections = [];
+    for (let i = 0; i < matches.length; i++) {
+      const match = matches[i];
+      const start = (match.index || 0) + match[0].length;
+      const end = i + 1 < matches.length ? matches[i + 1].index || sectionText.length : sectionText.length;
+      const title = String(match[1] || "").trim().replace(/:$/, "");
+      const items = sectionText.slice(start, end).split(/\r?\n/).map(normalizeMarkdownLine).filter(Boolean);
+      if (title && items.length) sections.push({ title, items });
+    }
+    return sections;
+  }
+
+  function normalizeArray(value) {
+    if (Array.isArray(value)) return value.map(i => String(i).trim()).filter(Boolean);
+    if (typeof value === "string") return value.split(/\r?\n/).map(i => i.trim()).filter(Boolean);
+    return [];
+  }
+
+  function normalizeSections(value) {
+    if (!Array.isArray(value)) return [];
+    return value.map(s => {
+      if (!s || typeof s !== "object") return null;
+      const title = String(s.title || "").trim();
+      const items = normalizeArray(s.items);
+      if (!title || !items.length) return null;
+      return { title, items };
+    }).filter(Boolean);
+  }
+
+  function buildId(month, title) {
+    return `${slugify(month || "script")}-${slugify(title || "novo-script")}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  function slugify(value) {
+    return String(value || "")
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase().replace(/[^\w\s-]/g, "").trim().replace(/[-\s]+/g, "-") || "script";
+  }
+
+  function normalizeImportedScript(input) {
+    if (!input || typeof input !== "object") return null;
+    const title = String(input.title || "").trim();
+    const month = String(input.month || "").trim();
+    const grandTheme = String(input.grand_theme || input.category || "").trim();
+    const category = String(input.category || "").trim();
+    const persona = String(input.persona || "").trim();
+    const sourceUrl = String(input.source_url || "").trim();
+    const id = String(input.id || buildId(month, title)).trim();
+    if (!title) return null;
+    return {
+      id, created_at: String(input.created_at || new Date().toISOString()).trim(),
+      title, month, grand_theme: grandTheme, category, persona,
+      viral_theme: String(input.viral_theme || category).trim(),
+      source_url: sourceUrl,
+      hook: String(input.hook || "").trim(),
+      summary: String(input.summary || [month, grandTheme, category, title].filter(Boolean).join(" | ")).trim(),
+      tags: normalizeArray(input.tags),
+      character_profiles: normalizeArray(input.character_profiles),
+      timeline: normalizeArray(input.timeline),
+      replaceable_elements: normalizeArray(input.replaceable_elements),
+      replaceable_sections: normalizeSections(input.replaceable_sections),
+      notes: normalizeArray(input.notes),
+    };
+  }
+
+  function parseScriptBlock(blockText) {
+    const month = extractMetadataValue(blockText, "Mês");
+    const grandTheme = extractMetadataValue(blockText, "Grande Tema");
+    const category = extractMetadataValue(blockText, "Categoria");
+    const persona = extractMetadataValue(blockText, "Personagem Principal");
+    const title = extractMetadataValue(blockText, "Título");
+    const sourceUrl = extractFirstLink(extractMetadataRaw(blockText, "Link Exemplo") || blockText);
+
+    const profilesText = extractSection(blockText, numberedSectionPattern(1, "Perfis de Personagem"), [numberedSectionPattern(2, "Ritmo \\(Timeline\\)"), numberedSectionPattern(3, "Elementos Substituíveis")]);
+    const timelineText = extractSection(blockText, numberedSectionPattern(2, "Ritmo \\(Timeline\\)"), [numberedSectionPattern(3, "Elementos Substituíveis")]);
+    const replaceableText = extractSection(blockText, numberedSectionPattern(3, "Elementos Substituíveis"), []);
+
+    const characterProfiles = profilesText.split(/\r?\n/).map(normalizeMarkdownLine).filter(Boolean);
+    const timeline = timelineText.split(/\r?\n/).map(normalizeMarkdownLine).filter(Boolean);
+    const replaceableSections = parseReplaceableSections(replaceableText);
+    const replaceableElements = replaceableSections.flatMap(s => s.items || []);
+
+    return normalizeImportedScript({ title, month, grand_theme: grandTheme, category, persona, viral_theme: category, source_url: sourceUrl, hook: timeline[0] || "", summary: [month, grandTheme, category, title].filter(Boolean).join(" | "), character_profiles: characterProfiles, timeline, replaceable_elements: replaceableElements, replaceable_sections: replaceableSections, notes: [] });
+  }
+
+  function parseMarkdownScripts(markdownText) {
+    const text = String(markdownText || "").replace(/\r\n/g, "\n").trim();
+    if (!text) return [];
+    const blocks = text.split(/(?=^#\s+SCRIPT\b)/gim).map(b => b.trim()).filter(Boolean);
+    if (blocks.length) return blocks.map(parseScriptBlock).filter(Boolean);
+    return [];
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // APP STATE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const state = { scripts: [], filtered: [] };
+
+  const els = {
+    scriptsContainer: document.getElementById("scripts-container"),
+    emptyState: document.getElementById("empty-state"),
+    resultCount: document.getElementById("result-count"),
+    month: document.getElementById("filter-month"),
+    grandTheme: document.getElementById("filter-grand-theme"),
+    persona: document.getElementById("filter-persona"),
+    category: document.getElementById("filter-category"),
+    keyword: document.getElementById("filter-keyword"),
+    importPanel: document.getElementById("import-panel"),
+    toggleImport: document.getElementById("toggle-import"),
+    closeImport: document.getElementById("close-import"),
+    mdFile: document.getElementById("md-file"),
+    mdContent: document.getElementById("md-content"),
+    importBtn: document.getElementById("import-btn"),
+    importResult: document.getElementById("import-result"),
+    clearAll: document.getElementById("clear-all"),
+  };
+
+  // ── Events ────────────────────────────────────────────────────────────────
+  els.toggleImport.addEventListener("click", () => els.importPanel.classList.toggle("hidden"));
+  els.closeImport.addEventListener("click", () => els.importPanel.classList.add("hidden"));
+
+  els.mdFile.addEventListener("change", async () => {
+    const file = els.mdFile.files?.[0];
+    if (file) els.mdContent.value = await file.text();
+  });
+
+  els.importBtn.addEventListener("click", () => {
+    const markdown = els.mdContent.value.trim();
+    if (!markdown) { showImportResult("Cole um Markdown antes de importar.", true); return; }
+    const parsed = parseMarkdownScripts(markdown);
+    if (!parsed.length) { showImportResult("Nenhum bloco reconhecido. Verifique se começa com '# SCRIPT'.", true); return; }
+
+    // upsert by id
+    for (const script of parsed) {
+      const idx = state.scripts.findIndex(s => s.id === script.id);
+      if (idx >= 0) state.scripts[idx] = script;
+      else state.scripts.unshift(script);
+    }
+
+    els.mdContent.value = "";
+    els.mdFile.value = "";
+    els.importPanel.classList.add("hidden");
+    showImportResult(`${parsed.length} script${parsed.length > 1 ? "s" : ""} importado${parsed.length > 1 ? "s" : ""} com sucesso.`);
+    els.clearAll.classList.remove("hidden");
+    populateFilters();
+    applyFilters();
+  });
+
+  els.clearAll.addEventListener("click", () => {
+    if (!confirm("Limpar todos os scripts importados?")) return;
+    state.scripts = [];
+    els.clearAll.classList.add("hidden");
+    populateFilters();
+    applyFilters();
+  });
+
+  for (const el of [els.month, els.grandTheme, els.persona, els.category, els.keyword]) {
+    el.addEventListener("input", applyFilters);
+    el.addEventListener("change", applyFilters);
+  }
+
+  // ── Filters ───────────────────────────────────────────────────────────────
+  function populateFilters() {
+    fillSelect(els.month, "Todos os Meses", uniqueValues(state.scripts.map(s => s.month)));
+    fillSelect(els.grandTheme, "Todos os Grandes Temas", uniqueValues(state.scripts.map(s => s.grand_theme)));
+    fillSelect(els.persona, "Todos os Personagens", uniqueValues(state.scripts.map(s => s.persona)));
+    fillSelect(els.category, "Todas as Categorias", uniqueValues(state.scripts.map(s => s.category)));
+  }
+
+  function fillSelect(select, defaultLabel, values) {
+    const current = select.value;
+    select.innerHTML = "";
+    const opt = document.createElement("option");
+    opt.value = ""; opt.textContent = defaultLabel;
+    select.appendChild(opt);
+    values.forEach(v => {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = v;
+      if (v === current) o.selected = true;
+      select.appendChild(o);
+    });
+  }
+
+  function uniqueValues(arr) {
+    return [...new Set(arr.map(v => String(v || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  }
+
+  function applyFilters() {
+    const month = els.month.value.trim();
+    const grandTheme = els.grandTheme.value.trim();
+    const persona = els.persona.value.trim();
+    const category = els.category.value.trim();
+    const keyword = els.keyword.value.trim().toLowerCase();
+
+    state.filtered = state.scripts.filter(item => {
+      const haystack = [item.title, item.summary, item.hook, item.month, item.grand_theme, item.category, item.persona, ...(item.tags || []), ...(item.character_profiles || []), ...(item.timeline || []), ...(item.replaceable_elements || [])].join(" ").toLowerCase();
+      if (month && item.month !== month) return false;
+      if (grandTheme && item.grand_theme !== grandTheme) return false;
+      if (persona && item.persona !== persona) return false;
+      if (category && item.category !== category) return false;
+      if (keyword && !haystack.includes(keyword)) return false;
+      return true;
+    });
+
+    const total = state.scripts.length;
+    const shown = state.filtered.length;
+    els.resultCount.textContent = total === 0 ? "" : shown === total ? `${total} script${total !== 1 ? "s" : ""}` : `${shown} de ${total} script${total !== 1 ? "s" : ""}`;
+    renderScripts();
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  function renderScripts() {
+    els.scriptsContainer.innerHTML = "";
+    els.emptyState.classList.toggle("hidden", state.filtered.length > 0);
+    if (!state.filtered.length) return;
+
+    state.filtered.forEach((item, index) => {
+      const article = document.createElement("article");
+      article.className = "script-card bg-white rounded-2xl card-shadow overflow-hidden border border-gray-100 transition-all duration-300 shadow-sm";
+      article.innerHTML = `
+        <div class="p-6 cursor-pointer hover:bg-gray-50 flex justify-between items-center bg-gradient-to-r from-slate-50 to-white">
+          <div class="flex items-center gap-4">
+            <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">${index + 1}</div>
+            <div>
+              <h2 class="text-xl font-bold text-gray-900 uppercase">${esc(item.title)}</h2>
+              <p class="text-gray-500 text-sm italic">
+                ${esc(item.month || "Sem mês")} | ${esc(item.grand_theme || "Sem grande tema")}
+                ${item.persona ? ` | <span class="text-indigo-500 font-semibold not-italic">${esc(item.persona)}</span>` : ""}
+                | ${esc(item.category || "Sem categoria")}
+              </p>
+            </div>
+          </div>
+          <i class="fa-solid fa-chevron-down text-gray-400 chevron-icon transition-transform duration-300"></i>
+        </div>
+        <div class="script-content border-t bg-white">
+          <div class="p-6 bg-slate-50 border-b flex flex-wrap justify-between gap-3">
+            <div class="flex flex-wrap gap-2">${renderTags(item.tags || [])}</div>
+            <div class="flex flex-wrap gap-3">
+              ${item.source_url ? `<button data-copy="${escAttr(item.source_url)}" class="copy-btn text-blue-600 bg-white px-5 py-2.5 rounded-lg border border-blue-200 shadow-sm font-semibold"><i class="fa-solid fa-copy"></i> Copiar Link</button>` : ""}
+              ${item.source_url ? `<a href="${escAttr(item.source_url)}" target="_blank" class="text-orange-500 bg-white px-5 py-2.5 rounded-lg border border-orange-200 shadow-sm font-semibold"><i class="fa-solid fa-play"></i> Assistir</a>` : ""}
+            </div>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x">
+            <div class="p-6 space-y-6 bg-gray-50/20">
+              ${item.persona ? `<div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4"><p class="text-xs font-bold uppercase text-indigo-700 mb-1">Personagem Principal</p><p class="text-indigo-900 font-semibold text-sm">${esc(item.persona)}</p></div>` : ""}
+              <section>
+                <h3 class="text-blue-800 font-bold text-lg mb-4 border-b pb-2"><i class="fa-solid fa-users"></i> Perfis de Personagem</h3>
+                <div class="space-y-4 text-sm text-gray-700 text-justify">${renderParagraphs(item.character_profiles, "Nenhum perfil cadastrado.")}</div>
+              </section>
+              <section>
+                <h3 class="text-green-800 font-bold text-lg mb-4 border-b pb-2"><i class="fa-solid fa-clock"></i> Ritmo (Timeline)</h3>
+                <div class="space-y-3 text-xs text-gray-700 text-justify font-medium">${renderParagraphs(item.timeline, "Nenhuma timeline cadastrada.")}</div>
+              </section>
+            </div>
+            <div class="lg:col-span-2 p-6 space-y-8">
+              <section>
+                <h3 class="text-purple-800 font-bold text-lg mb-4">Elementos Substituíveis</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+                  <div class="bg-purple-50/50 p-4 rounded-xl border border-purple-100 md:col-span-2">
+                    <p class="font-bold mb-2 uppercase text-xs text-purple-900">Link e Contexto</p>
+                    <div class="space-y-2 text-gray-700">
+                      <p><strong>Mês:</strong> ${esc(item.month || "—")}</p>
+                      <p><strong>Grande Tema:</strong> ${esc(item.grand_theme || "—")}</p>
+                      <p><strong>Personagem Principal:</strong> ${esc(item.persona || "—")}</p>
+                      <p><strong>Categoria:</strong> ${esc(item.category || "—")}</p>
+                      <p><strong>Link Exemplo:</strong> ${item.source_url ? `<a href="${escAttr(item.source_url)}" target="_blank" class="text-blue-600 underline break-all">${esc(item.source_url)}</a>` : "—"}</p>
+                    </div>
+                  </div>
+                  ${renderReplaceableSections(item.replaceable_sections || [], item.replaceable_elements || [])}
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      `;
+
+      article.firstElementChild.addEventListener("click", () => article.classList.toggle("active"));
+      const copyBtn = article.querySelector(".copy-btn");
+      if (copyBtn) copyBtn.addEventListener("click", e => { e.stopPropagation(); copyLink(copyBtn.dataset.copy); });
+      els.scriptsContainer.appendChild(article);
+    });
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function renderTags(tags) {
+    if (!tags.length) return "<span class='text-xs text-slate-500 bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-sm'>Sem tags</span>";
+    return tags.map(t => `<span class="text-xs text-slate-600 bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-sm">${esc(t)}</span>`).join("");
+  }
+
+  function renderParagraphs(items, emptyText) {
+    if (!items.length) return `<p class="text-gray-500 text-sm">${esc(emptyText)}</p>`;
+    return items.map(i => `<p class="leading-7">${esc(i)}</p>`).join("");
+  }
+
+  function renderList(items, emptyText) {
+    if (!items.length) return `<p class="text-gray-500 text-sm">${esc(emptyText)}</p>`;
+    return `<ul class="space-y-2 text-gray-700">${items.map(i => `<li>${esc(i)}</li>`).join("")}</ul>`;
+  }
+
+  function renderReplaceableSections(sections, fallback) {
+    if (!sections.length) return `<div class="bg-purple-50/50 p-4 rounded-xl border border-purple-100 md:col-span-2"><p class="font-bold mb-2 uppercase text-xs text-purple-900">Elementos Variáveis</p>${renderList(fallback, "Nenhum elemento substituível cadastrado.")}</div>`;
+    return sections.map(s => `
+      <div class="bg-purple-50/50 p-4 rounded-xl border border-purple-100 ${s.items.length > 3 ? "md:col-span-2" : ""}">
+        <p class="font-bold mb-2 uppercase text-xs text-purple-900">${esc(s.title)}</p>
+        ${renderList(s.items, "Nenhum item.")}
+      </div>`).join("");
+  }
+
+  function showImportResult(msg, isError = false) {
+    els.importResult.textContent = msg;
+    els.importResult.className = isError ? "text-sm text-red-600" : "text-sm text-emerald-600";
+    setTimeout(() => els.importResult.textContent = "", 4000);
+  }
+
+  function copyLink(text) {
+    navigator.clipboard.writeText(text).catch(() => {
+      const el = document.createElement("textarea");
+      el.value = text; document.body.appendChild(el); el.select(); document.execCommand("copy"); document.body.removeChild(el);
+    });
+    const toast = document.getElementById("toast");
+    toast.className = "copy-toast show";
+    setTimeout(() => toast.className = "copy-toast", 3000);
+  }
+
+  function esc(v) {
+    return String(v || "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
+  }
+  function escAttr(v) { return esc(v); }
+
+  // init
+  populateFilters();
+  applyFilters();
+  </script>
+</body>
+</html>
