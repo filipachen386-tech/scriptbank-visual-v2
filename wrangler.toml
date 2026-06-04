@@ -1,4 +1,4 @@
-name = "scriptbank-visual-v3"
+name = "scriptbank-visual-v2"
 main = "src/worker.js"
 compatibility_date = "2026-04-30"
 
