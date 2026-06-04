@@ -1,0 +1,1851 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ScriptBank Visual — Preview Local</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <style>
+    body { background: #f8fafc; font-family: Inter, sans-serif; }
+    .card-shadow { box-shadow: 0 4px 6px -1px rgba(0,0,0,.1), 0 2px 4px -1px rgba(0,0,0,.06); }
+    .script-content { display: none; }
+    .script-card.active .script-content { display: block; }
+    .script-card.active .chevron-icon { transform: rotate(180deg); }
+    .copy-toast { visibility: hidden; min-width: 220px; margin-left: -110px; background-color: #333; color: #fff; text-align: center; border-radius: 8px; padding: 12px; position: fixed; z-index: 100; left: 50%; bottom: 30px; }
+    .copy-toast.show { visibility: visible; animation: fadein .5s, fadeout .5s 2.5s; }
+    @keyframes fadein { from { bottom: 0; opacity: 0; } to { bottom: 30px; opacity: 1; } }
+    @keyframes fadeout { from { bottom: 30px; opacity: 1; } to { bottom: 0; opacity: 0; } }
+  </style>
+</head>
+<body>
+  <div id="toast" class="copy-toast">Link copiado!</div>
+
+  <header class="bg-white border-b sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4">
+      <div class="flex justify-between items-center h-16 gap-4">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-scroll text-blue-600 text-2xl"></i>
+          <h1 class="text-xl font-bold text-gray-800">ScriptBank <span class="text-blue-600">Visual</span></h1>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs font-semibold border border-yellow-200">⚡ Preview Local</span>
+          <button id="toggle-import" class="bg-orange-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-orange-600 transition">
+            <i class="fa-solid fa-plus"></i> Importar Script
+          </button>
+          <button id="clear-all" class="hidden text-red-600 bg-white px-4 py-2 rounded-lg border border-red-200 font-medium hover:bg-red-50 transition">
+            <i class="fa-solid fa-trash"></i> Limpar tudo
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-8 pb-20">
+
+    <!-- Import panel -->
+    <section id="import-panel" class="hidden mb-8">
+      <article class="bg-white rounded-2xl card-shadow overflow-hidden border border-gray-100">
+        <div class="p-6 bg-gradient-to-r from-slate-50 to-white border-b flex justify-between items-center">
+          <div>
+            <h2 class="text-xl font-bold text-gray-900 uppercase">Importar Markdown</h2>
+            <p class="text-gray-500 text-sm italic mt-1">Cole o script abaixo ou carregue um arquivo .md</p>
+          </div>
+          <button id="close-import" class="text-gray-400 hover:text-gray-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+        </div>
+        <div class="p-6 space-y-4">
+          <input id="md-file" type="file" accept=".md,.markdown,.txt" class="w-full border rounded-lg p-3 bg-gray-50">
+          <textarea id="md-content" rows="14" class="w-full border rounded-lg p-3 bg-gray-50 font-mono text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="# SCRIPT 1&#10;&#10;**Mês:** Junho&#10;**Grande Tema:** Drama familiar&#10;**Categoria:** Tema viral&#10;**Título:** Filhinho da Mamãe&#10;**Link Exemplo:** https://...&#10;**Personagem Principal:** Homem Imaturo&#10;&#10;1. Perfis de Personagem&#10;..."></textarea>
+          <div class="flex items-center gap-3">
+            <button id="import-btn" class="bg-slate-800 text-white px-6 py-3 rounded-lg font-medium hover:bg-slate-900 transition">
+              <i class="fa-solid fa-file-import"></i> Importar
+            </button>
+            <span id="import-result" class="text-sm"></span>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <!-- Filter bar -->
+    <section class="bg-white p-6 rounded-xl card-shadow flex flex-wrap gap-4 items-end border border-gray-100 mb-4">
+      <div class="min-w-[220px] flex-1">
+        <label for="filter-keyword" class="block text-sm font-medium text-gray-700 mb-2">Palavra-chave</label>
+        <input id="filter-keyword" class="w-full border rounded-lg p-2.5 bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Buscar por título, resumo, tags...">
+      </div>
+      <div class="min-w-[160px]">
+        <label for="filter-month" class="block text-sm font-medium text-gray-700 mb-2">Mês</label>
+        <select id="filter-month" class="w-full border rounded-lg p-2.5 bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"></select>
+      </div>
+      <div class="min-w-[200px]">
+        <label for="filter-grand-theme" class="block text-sm font-medium text-gray-700 mb-2">Grande Tema</label>
+        <select id="filter-grand-theme" class="w-full border rounded-lg p-2.5 bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"></select>
+      </div>
+      <div class="min-w-[200px]">
+        <label for="filter-persona" class="block text-sm font-medium text-gray-700 mb-2">Personagem Principal</label>
+        <select id="filter-persona" class="w-full border rounded-lg p-2.5 bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"></select>
+      </div>
+      <div class="min-w-[180px]">
+        <label for="filter-category" class="block text-sm font-medium text-gray-700 mb-2">Categoria</label>
+        <select id="filter-category" class="w-full border rounded-lg p-2.5 bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"></select>
+      </div>
+    </section>
+
+    <div id="result-count" class="text-sm text-gray-400 mb-4 pl-1"></div>
+    <section id="scripts-container" class="space-y-6"></section>
+    <section id="empty-state" class="hidden bg-white rounded-2xl border border-dashed border-slate-300 p-10 text-center card-shadow">
+      <i class="fa-solid fa-scroll text-slate-300 text-4xl mb-4"></i>
+      <h3 class="text-2xl font-bold text-slate-800 mb-2">Nenhum script encontrado</h3>
+      <p class="text-slate-500 leading-7">Importe scripts pelo painel acima para começar.</p>
+    </section>
+  </main>
+
+  <script>
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PARSER — ported from worker.js
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function normalizeMarkdownLine(line) {
+    return String(line || "").trim()
+      .replace(/^\s*[-*]\s*/, "")
+      .replace(/^\s*\d+\.\s*/, "")
+      .replace(/\\\./g, ".")
+      .replace(/\\!/g, "!")
+      .replace(/\\_/g, "_")
+      .replace(/\*\*(.*?)\*\*/g, "$1")   // paired bold
+      .replace(/\*([^*]+)\*/g, "$1")      // paired italic
+      .replace(/\*+/g, "")               // leftover lone asterisks
+      .replace(/\[(.*?)\]\((https?:\/\/[^\s)]+)\)/g, "$1: $2")
+      .replace(/\s{2,}$/g, "")
+      .trim();
+  }
+
+  function escapeRegExp(v) {
+    return String(v).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function extractMetadataRaw(blockText, fieldName) {
+    const pattern = new RegExp(`^\\s*\\*\\*${escapeRegExp(fieldName)}:\\*\\*\\s*(.+?)\\s*$`, "im");
+    const match = blockText.match(pattern);
+    return match ? match[1].trim() : "";
+  }
+
+  function extractMetadataValue(blockText, fieldName) {
+    return normalizeMarkdownLine(extractMetadataRaw(blockText, fieldName));
+  }
+
+  function extractFirstLink(text) {
+    const mm = text.match(/\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/);
+    if (mm) return mm[1].replace(/\\_/g, "_");
+    const um = text.match(/https?:\/\/[^\s)\]]+/);
+    return um ? um[0].replace(/\\_/g, "_") : "";
+  }
+
+  function numberedSectionPattern(number, label) {
+    return new RegExp(`^\\s*(?:\\*\\*)?#*\\s*${number}\\\\?\\.\\s*${label}(?:\\*\\*)?\\s*$`, "im");
+  }
+
+  function extractSection(markdownText, startPattern, endPatterns) {
+    const startMatch = markdownText.match(startPattern);
+    if (!startMatch || startMatch.index == null) return "";
+    const start = startMatch.index + startMatch[0].length;
+    let end = markdownText.length;
+    const slice = markdownText.slice(start);
+    for (const pattern of endPatterns) {
+      const match = slice.match(pattern);
+      if (match && match.index != null) end = Math.min(end, start + match.index);
+    }
+    return markdownText.slice(start, end).trim();
+  }
+
+  function parseReplaceableSections(sectionText) {
+    const lines = sectionText.split(/\r?\n/);
+    const optionLineRe = /^\s*(?:\*\*)?[A-Z]\.\s/;
+    const titleIndices = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      if (optionLineRe.test(line)) continue;
+      let j = i + 1;
+      while (j < lines.length && !lines[j].trim()) j++;
+      if (j < lines.length && optionLineRe.test(lines[j].trim())) titleIndices.push(i);
+    }
+    if (!titleIndices.length) {
+      const fallback = lines.map(normalizeMarkdownLine).filter(Boolean);
+      return fallback.length ? [{ title: "Elementos Substituíveis", items: fallback }] : [];
+    }
+    const sections = [];
+    for (let t = 0; t < titleIndices.length; t++) {
+      const titleLineIdx = titleIndices[t];
+      const nextTitleIdx = t + 1 < titleIndices.length ? titleIndices[t + 1] : lines.length;
+      const rawTitle = normalizeMarkdownLine(lines[titleLineIdx]);
+      const items = lines.slice(titleLineIdx + 1, nextTitleIdx).map(normalizeMarkdownLine).filter(Boolean);
+      if (rawTitle && items.length) sections.push({ title: rawTitle, items });
+    }
+    return sections;
+  }
+
+  function normalizeArray(value) {
+    if (Array.isArray(value)) return value.map(i => String(i).trim()).filter(Boolean);
+    if (typeof value === "string") return value.split(/\r?\n/).map(i => i.trim()).filter(Boolean);
+    return [];
+  }
+
+  function normalizeSections(value) {
+    if (!Array.isArray(value)) return [];
+    return value.map(s => {
+      if (!s || typeof s !== "object") return null;
+      const title = String(s.title || "").trim();
+      const items = normalizeArray(s.items);
+      if (!title || !items.length) return null;
+      return { title, items };
+    }).filter(Boolean);
+  }
+
+  function buildId(month, title) {
+    return `${slugify(month || "script")}-${slugify(title || "novo-script")}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  function slugify(value) {
+    return String(value || "")
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase().replace(/[^\w\s-]/g, "").trim().replace(/[-\s]+/g, "-") || "script";
+  }
+
+  function normalizeImportedScript(input) {
+    if (!input || typeof input !== "object") return null;
+    const title = String(input.title || "").trim();
+    const month = String(input.month || "").trim();
+    const grandTheme = String(input.grand_theme || input.category || "").trim();
+    const category = String(input.category || "").trim();
+    const persona = String(input.persona || "").trim();
+    const sourceUrl = String(input.source_url || "").trim();
+    const id = String(input.id || buildId(month, title)).trim();
+    if (!title) return null;
+    return {
+      id, created_at: String(input.created_at || new Date().toISOString()).trim(),
+      title, month, grand_theme: grandTheme, category, persona,
+      viral_theme: String(input.viral_theme || category).trim(),
+      source_url: sourceUrl,
+      hook: String(input.hook || "").trim(),
+      summary: String(input.summary || [month, grandTheme, category, title].filter(Boolean).join(" | ")).trim(),
+      tags: normalizeArray(input.tags),
+      character_profiles: normalizeArray(input.character_profiles),
+      timeline: normalizeArray(input.timeline),
+      replaceable_elements: normalizeArray(input.replaceable_elements),
+      replaceable_sections: normalizeSections(input.replaceable_sections),
+      notes: normalizeArray(input.notes),
+    };
+  }
+
+  function parseScriptBlock(blockText) {
+    const month = extractMetadataValue(blockText, "Mês");
+    const grandTheme = extractMetadataValue(blockText, "Grande Tema");
+    const category = extractMetadataValue(blockText, "Categoria");
+    const persona = extractMetadataValue(blockText, "Personagem Principal");
+    const title = extractMetadataValue(blockText, "Título");
+    const sourceUrl = extractFirstLink(extractMetadataRaw(blockText, "Link Exemplo") || blockText);
+
+    const profilesText = extractSection(blockText, numberedSectionPattern(1, "Perfis de Personagem"), [numberedSectionPattern(2, "Ritmo \\(Timeline\\)"), numberedSectionPattern(3, "Elementos Substituíveis")]);
+    const timelineText = extractSection(blockText, numberedSectionPattern(2, "Ritmo \\(Timeline\\)"), [numberedSectionPattern(3, "Elementos Substituíveis")]);
+    const replaceableText = extractSection(blockText, numberedSectionPattern(3, "Elementos Substituíveis"), []);
+
+    const characterProfiles = profilesText.split(/\r?\n/).map(normalizeMarkdownLine).filter(Boolean);
+    const timeline = timelineText.split(/\r?\n/).map(normalizeMarkdownLine).filter(Boolean);
+    const replaceableSections = parseReplaceableSections(replaceableText);
+    const replaceableElements = replaceableSections.flatMap(s => s.items || []);
+
+    return normalizeImportedScript({ title, month, grand_theme: grandTheme, category, persona, viral_theme: category, source_url: sourceUrl, hook: timeline[0] || "", summary: [month, grandTheme, category, title].filter(Boolean).join(" | "), character_profiles: characterProfiles, timeline, replaceable_elements: replaceableElements, replaceable_sections: replaceableSections, notes: [] });
+  }
+
+  function parseMarkdownScripts(markdownText) {
+    const text = String(markdownText || "").replace(/\r\n/g, "\n").trim();
+    if (!text) return [];
+    const blocks = text.split(/(?=^#\s+SCRIPT\b)/gim).map(b => b.trim()).filter(Boolean);
+    if (blocks.length) return blocks.map(parseScriptBlock).filter(Boolean);
+    return [];
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // APP STATE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const PRELOADED_SCRIPTS = [
+  {
+    "id": "junho-um-simples-qr-code-virou-um-pesadelo-780141",
+    "created_at": "2026-06-01T00:00:00Z",
+    "title": "Um simples QR Code virou um pesadelo",
+    "month": "Junho",
+    "grand_theme": "Drama social",
+    "category": "Tema geral",
+    "persona": "Vítima Confiável",
+    "source_url": "https://www.kwai.com/@Chacalfamily/video/5204903905394927570",
+    "hook": "0–20s (O Gancho): A encomenda que ninguém pediu",
+    "summary": "Junho | Drama social | Tema geral | Um simples QR Code virou um pesadelo",
+    "tags": [],
+    "character_profiles": [
+      "Protagonista Masculino (Vítima): O “Pai Confiável”",
+      "Um homem simples, organizado e acostumado a resolver problemas rapidamente. Tem comportamento racional no dia a dia, mas acredita demais na aparência de legitimidade das situações. Representa o medo coletivo de que qualquer pessoa comum possa ser enganada.",
+      "Protagonista Feminina (Personagem de Apoio): A “Filha Observadora”",
+      "Curiosa, próxima do pai e participante ativa da descoberta. Funciona como extensão do olhar do público: questiona, conecta pistas e verbaliza a dúvida que o espectador sentiria.",
+      "Antagonista Invisível: O “Golpista Fantasma”",
+      "Nunca aparece fisicamente. Usa embalagem profissional, objeto sem valor e instruções aparentemente normais para explorar curiosidade, rotina e excesso de confiança. O poder dele está justamente em parecer inexistente."
+    ],
+    "timeline": [
+      "0–20s (O Gancho): A encomenda que ninguém pediu",
+      "Chega uma encomenda entregue na portaria. Está no nome do pai, mas ninguém reconhece o pedido. A curiosidade domina a cena. O público já pensa: “eu abriria também”.",
+      "20–50s (A Armadilha Perfeitamente Normal)",
+      "O pacote é aberto com dificuldade. Dentro há apenas um carregador barato. Surge o primeiro estranhamento: por que alguém enviaria isso? Em seguida aparece a instrução:",
+      "“Para devolução, leia o QR Code.”",
+      "50–80s (O Erro de Boa Fé)",
+      "Sem desconfiar, o pai pega o celular e escaneia o código para resolver o problema. Segundos depois o aparelho falha. O ambiente muda completamente.",
+      "80–110s (O Pesadelo Digital)",
+      "A conta parece comprometida. Surge desespero, sensação de invasão e perda financeira. O público entra no modo medo: “isso pode acontecer comigo”.",
+      "110–130s (O Encerramento de Alerta)",
+      "A narrativa abandona o drama individual e vira denúncia pública. Os personagens olham para câmera e alertam: não escaneie códigos sem confirmar origem."
+    ],
+    "replaceable_elements": [
+      "A. Encomenda desconhecida entregue na portaria (Versão atual)",
+      "B. Entrega deixada na porta com nome correto",
+      "C. Presente supostamente enviado por empresa",
+      "D. Caixa enviada “por engano”",
+      "A. Carregador simples (Versão atual)",
+      "B. Fone de ouvido barato",
+      "C. Adaptador de tomada",
+      "D. Relógio genérico",
+      "A. QR Code de devolução (Versão atual)",
+      "B. Link curto impresso",
+      "C. Número para WhatsApp",
+      "D. Aplicativo para rastreamento",
+      "A. Pai \\+ filha (Versão atual)",
+      "B. Avó \\+ neto",
+      "C. Casal",
+      "D. Irmão mais velho \\+ irmão mais novo",
+      "A. Sensação de conta invadida (Versão atual)",
+      "B. Cobrança inesperada dias depois",
+      "C. Bloqueio do aparelho",
+      "D. Tentativa posterior de extorsão",
+      "A. Abrir cuidadosamente uma embalagem aparentemente oficial",
+      "B. Aproximar lentamente o celular do QR Code",
+      "C. Tela apagando imediatamente após leitura",
+      "D. Expressão silenciosa ao perceber o prejuízo"
+    ],
+    "replaceable_sections": [
+      {
+        "title": "Gatilho Inicial (Como o golpe chega)",
+        "items": [
+          "A. Encomenda desconhecida entregue na portaria (Versão atual)",
+          "B. Entrega deixada na porta com nome correto",
+          "C. Presente supostamente enviado por empresa",
+          "D. Caixa enviada “por engano”"
+        ]
+      },
+      {
+        "title": "Objeto Dentro da Embalagem (Baixo valor × alto impacto)",
+        "items": [
+          "A. Carregador simples (Versão atual)",
+          "B. Fone de ouvido barato",
+          "C. Adaptador de tomada",
+          "D. Relógio genérico"
+        ]
+      },
+      {
+        "title": "Mecanismo da Armadilha (Momento da decisão)",
+        "items": [
+          "A. QR Code de devolução (Versão atual)",
+          "B. Link curto impresso",
+          "C. Número para WhatsApp",
+          "D. Aplicativo para rastreamento"
+        ]
+      },
+      {
+        "title": "Relação Entre Personagens",
+        "items": [
+          "A. Pai \\+ filha (Versão atual)",
+          "B. Avó \\+ neto",
+          "C. Casal",
+          "D. Irmão mais velho \\+ irmão mais novo"
+        ]
+      },
+      {
+        "title": "Consequência Dramática",
+        "items": [
+          "A. Sensação de conta invadida (Versão atual)",
+          "B. Cobrança inesperada dias depois",
+          "C. Bloqueio do aparelho",
+          "D. Tentativa posterior de extorsão"
+        ]
+      },
+      {
+        "title": "Cenas de Impacto (Ações)",
+        "items": [
+          "A. Abrir cuidadosamente uma embalagem aparentemente oficial",
+          "B. Aproximar lentamente o celular do QR Code",
+          "C. Tela apagando imediatamente após leitura",
+          "D. Expressão silenciosa ao perceber o prejuízo"
+        ]
+      }
+    ],
+    "notes": []
+  },
+  {
+    "id": "junho-pra-mae-nao-tem-pros-amigos-sobra-866058",
+    "created_at": "2026-06-01T00:00:00Z",
+    "title": "Pra mãe não tem, pros amigos sobra!",
+    "month": "Junho",
+    "grand_theme": "Drama familiar",
+    "category": "Tema geral",
+    "persona": "Homem Imaturo",
+    "source_url": "https://www.kwai.com/@carlaebia/video/5198711454203476864",
+    "hook": "0–20s (O Gancho): O cartão “clonado”",
+    "summary": "Junho | Drama familiar | Tema geral | Pra mãe não tem, pros amigos sobra!",
+    "tags": [],
+    "character_profiles": [
+      "Protagonista Feminina: A “Esposa que impõe vergonha”",
+      "Mulher direta, emocionalmente forte e guiada por senso de justiça familiar. Não aceita ver necessidade básica sendo ignorada enquanto existe dinheiro para diversão. Age sem pedir permissão porque acredita que existem responsabilidades que vêm antes do conforto pessoal.",
+      "Protagonista Masculino (Antagonista): O “Filho das prioridades invertidas”",
+      "Homem adulto, financeiramente estável, mas que trata ajuda para a mãe como gasto e lazer como prioridade. Usa o discurso de estar apertado apenas quando precisa justificar negligência familiar.",
+      "Personagem Ausente (Centro emocional): A “Mãe silenciosa”",
+      "Mulher doente que usa praticamente toda a renda com remédios e exames. Não pede luxo nem dinheiro extra — pede apenas comida para conseguir passar os próximos dias."
+    ],
+    "timeline": [
+      "0–20s (O Gancho): O cartão “clonado”",
+      "O marido entra desesperado acreditando que sofreu fraude.",
+      "Mostra a fatura:",
+      "R$ 1.500 em compras.",
+      "O público imediatamente quer descobrir:",
+      "“Quem gastou esse dinheiro?”",
+      "20–50s (A Revelação que vira o jogo)：",
+      "A esposa responde calmamente:",
+      "“Não foi golpe. Fui eu.”",
+      "O choque aumenta quando ela completa:",
+      "“A compra foi pra sua mãe.”",
+      "O público muda instantaneamente de lado.",
+      "50–80s (A Exposição da verdade)：",
+      "Descobrimos que a mãe pediu apenas dinheiro para comprar arroz, feijão e carne.",
+      "Antes disso, tentou pedir ajuda ao próprio filho.",
+      "Ele respondeu que estava sem dinheiro.",
+      "80–110s (O Julgamento moral)",
+      "A esposa desmonta a desculpa:",
+      "Ele tem dinheiro.",
+      "Só não tem prioridade.",
+      "Ela revela que existe dinheiro para mesa de bar e amigos, mas não para alimentar a própria mãe.",
+      "110–130s (O Clímax emocional)",
+      "O marido tenta negociar o prejuízo.",
+      "Ela encerra:",
+      "“Se mês que vem ela precisar eu faço de novo.”",
+      "Olha para câmera e entrega o julgamento ao público."
+    ],
+    "replaceable_elements": [
+      "A. Negar dinheiro para alimentação da mãe (Versão atual)",
+      "B. Negar dinheiro para remédio",
+      "C. Ignorar pedido para exame médico",
+      "D. Fingir dificuldade financeira para evitar ajudar",
+      "A. Bebida e amigos (Versão atual)",
+      "B. Futebol e apostas",
+      "C. Carro e aparência",
+      "D. Viagem e lazer",
+      "A. Esposa (Versão atual)",
+      "B. Nora",
+      "C. Irmã",
+      "D. Melhor amigo da família",
+      "A. Fazer compras usando o cartão dele (Versão atual)",
+      "B. Mostrar gastos supérfluos",
+      "C. Levar o filho até a casa da mãe",
+      "D. Obrigar ele a assumir as despesas do mês",
+      "A. Gastando salário com exames (Versão atual)",
+      "B. Recuperação médica",
+      "C. Aposentadoria insuficiente",
+      "D. Vivendo sozinha",
+      "A. Mostrar a fatura e o desespero inicial",
+      "B. Revelação calma: “Fui eu”",
+      "C. Lista simples da feira contrastando com o valor gasto em lazer",
+      "D. Silêncio após ouvir que a mãe pediu apenas comida"
+    ],
+    "replaceable_sections": [
+      {
+        "title": "Conflito Central (Forma de abandono familiar)",
+        "items": [
+          "A. Negar dinheiro para alimentação da mãe (Versão atual)",
+          "B. Negar dinheiro para remédio",
+          "C. Ignorar pedido para exame médico",
+          "D. Fingir dificuldade financeira para evitar ajudar"
+        ]
+      },
+      {
+        "title": "Prioridade escolhida pelo filho",
+        "items": [
+          "A. Bebida e amigos (Versão atual)",
+          "B. Futebol e apostas",
+          "C. Carro e aparência",
+          "D. Viagem e lazer"
+        ]
+      },
+      {
+        "title": "Quem confronta o protagonista",
+        "items": [
+          "A. Esposa (Versão atual)",
+          "B. Nora",
+          "C. Irmã",
+          "D. Melhor amigo da família"
+        ]
+      },
+      {
+        "title": "Forma da correção moral",
+        "items": [
+          "A. Fazer compras usando o cartão dele (Versão atual)",
+          "B. Mostrar gastos supérfluos",
+          "C. Levar o filho até a casa da mãe",
+          "D. Obrigar ele a assumir as despesas do mês"
+        ]
+      },
+      {
+        "title": "Estado da mãe",
+        "items": [
+          "A. Gastando salário com exames (Versão atual)",
+          "B. Recuperação médica",
+          "C. Aposentadoria insuficiente",
+          "D. Vivendo sozinha"
+        ]
+      },
+      {
+        "title": "Cenas de Impacto (Ações)",
+        "items": [
+          "A. Mostrar a fatura e o desespero inicial",
+          "B. Revelação calma: “Fui eu”",
+          "C. Lista simples da feira contrastando com o valor gasto em lazer",
+          "D. Silêncio após ouvir que a mãe pediu apenas comida"
+        ]
+      }
+    ],
+    "notes": []
+  },
+  {
+    "id": "junho-filhinho-da-mamae-2fb5e0",
+    "created_at": "2026-06-01T00:00:00Z",
+    "title": "Filhinho da Mamãe",
+    "month": "Junho",
+    "grand_theme": "Drama familiar",
+    "category": "Tema viral",
+    "persona": "Homem Imaturo",
+    "source_url": "https://www.kwai.com/@Tamarakaa/video/5188859834053787973",
+    "hook": "0–20s (O Gancho): A sogra invade a casa",
+    "summary": "Junho | Drama familiar | Tema viral | Filhinho da Mamãe",
+    "tags": [],
+    "character_profiles": [
+      "Protagonista Feminina: A “Mulher que escolhe paz”",
+      "Independente, direta e emocionalmente madura. Terminou o relacionamento porque percebeu que não estava se relacionando com um parceiro — estava entrando numa disputa permanente com a mãe dele. Representa o arquétipo da mulher que rejeita assumir papel de segunda prioridade.",
+      "Protagonista Masculino (Antagonista): O “Filhinho da mamãe”",
+      "Homem adulto de 37 anos que evita conflitos e transfere decisões emocionais para a mãe. Incapaz de defender a própria relação ou sustentar escolhas sozinho. Representa imaturidade emocional mascarada de respeito familiar.",
+      "Antagonista Secundária: A “Mãe proprietária”",
+      "Controladora, invasiva e emocionalmente dependente do filho. Não aceita perder espaço para outra mulher e trata relacionamentos do filho como algo que precisa de aprovação e intervenção dela."
+    ],
+    "timeline": [
+      "0–20s (O Gancho): A sogra invade a casa",
+      "A ex chega em casa e encontra a ex-sogra entrando sem convite.",
+      "Primeiro choque:",
+      "“Você não pode terminar com meu filho.”",
+      "O público já entende que existe algo muito errado.",
+      "20–50s (A Inversão absurda)：",
+      "A mãe começa a discutir como se o relacionamento fosse dela.",
+      "O filho permanece em silêncio.",
+      "A protagonista percebe que não está terminando com um homem — está enfrentando uma mãe.",
+      "50–80s (A Humilhação pública)：",
+      "Descobrimos que o homem tem 37 anos.",
+      "Mesmo assim, a mãe responde por ele, fala por ele e exige que o namoro continue.",
+      "A protagonista dispara:",
+      "“Agora eu tive certeza que fiz a escolha certa.”",
+      "80–110s (A Revelação do problema)：",
+      "Ela confronta os dois:",
+      "Quem está sofrendo não é culpa do término.",
+      "É culpa da mãe que nunca deixou o filho crescer.",
+      "O silêncio dele confirma tudo.",
+      "110–130s (O Clímax da vergonha)：",
+      "A mãe manda:",
+      "“Termina com ela.”",
+      "Ele obedece.",
+      "A protagonista percebe que escapou de um casamento impossível.",
+      "Fecha com:",
+      "“Sou mais sogra me livrei.”"
+    ],
+    "replaceable_elements": [
+      "A. Mãe tentando impedir término (Versão atual)",
+      "B. Mãe escolhendo data do casamento",
+      "C. Mãe controlando dinheiro do casal",
+      "D. Mãe decidindo onde vão morar",
+      "A. Não consegue terminar sozinho (Versão atual)",
+      "B. Precisa da mãe para tomar decisões",
+      "C. Consulta a mãe para tudo",
+      "D. Divide segredos do casal com a mãe",
+      "A. Falta de autonomia (Versão atual)",
+      "B. Ciúme da sogra",
+      "C. Invasão de privacidade",
+      "D. Controle emocional",
+      "A. Namorada (Versão atual)",
+      "B. Amiga da protagonista",
+      "C. Irmã do rapaz",
+      "D. Próprio pai do rapaz",
+      "A. Mãe termina pelo filho (Versão atual)",
+      "B. Mãe responde todas perguntas por ele",
+      "C. Mãe manda ele pedir desculpas",
+      "D. Mãe entra no quarto durante discussão",
+      "A. Abrir a porta e encontrar a sogra entrando",
+      "B. Filho ficando em silêncio durante toda discussão",
+      "C. A frase: “Você sabe falar?”",
+      "D. O momento em que ele termina porque a mãe mandou"
+    ],
+    "replaceable_sections": [
+      {
+        "title": "Conflito Central (Forma da interferência familiar)",
+        "items": [
+          "A. Mãe tentando impedir término (Versão atual)",
+          "B. Mãe escolhendo data do casamento",
+          "C. Mãe controlando dinheiro do casal",
+          "D. Mãe decidindo onde vão morar"
+        ]
+      },
+      {
+        "title": "Tipo de dependência do parceiro",
+        "items": [
+          "A. Não consegue terminar sozinho (Versão atual)",
+          "B. Precisa da mãe para tomar decisões",
+          "C. Consulta a mãe para tudo",
+          "D. Divide segredos do casal com a mãe"
+        ]
+      },
+      {
+        "title": "Motivo da ruptura",
+        "items": [
+          "A. Falta de autonomia (Versão atual)",
+          "B. Ciúme da sogra",
+          "C. Invasão de privacidade",
+          "D. Controle emocional"
+        ]
+      },
+      {
+        "title": "Quem expõe a verdade",
+        "items": [
+          "A. Namorada (Versão atual)",
+          "B. Amiga da protagonista",
+          "C. Irmã do rapaz",
+          "D. Próprio pai do rapaz"
+        ]
+      },
+      {
+        "title": "Forma da humilhação final",
+        "items": [
+          "A. Mãe termina pelo filho (Versão atual)",
+          "B. Mãe responde todas perguntas por ele",
+          "C. Mãe manda ele pedir desculpas",
+          "D. Mãe entra no quarto durante discussão"
+        ]
+      },
+      {
+        "title": "Cenas de Impacto (Ações)",
+        "items": [
+          "A. Abrir a porta e encontrar a sogra entrando",
+          "B. Filho ficando em silêncio durante toda discussão",
+          "C. A frase: “Você sabe falar?”",
+          "D. O momento em que ele termina porque a mãe mandou"
+        ]
+      }
+    ],
+    "notes": []
+  },
+  {
+    "id": "junho-respeito-e-via-de-mao-dupla-001203",
+    "created_at": "2026-06-01T00:00:00Z",
+    "title": "Respeito é via de mão dupla.",
+    "month": "Junho",
+    "grand_theme": "Drama familiar",
+    "category": "Tema geral",
+    "persona": "Mulher que Bota Limite",
+    "source_url": "https://www.kwai.com/@carlaebia/video/5228829276596825006",
+    "hook": "0–20s (O Gancho): O convite que não chegou",
+    "summary": "Junho | Drama familiar | Tema geral | Respeito é via de mão dupla.",
+    "tags": [],
+    "character_profiles": [
+      "Protagonista Feminina: A “Esposa que estabelece limites”",
+      "Mulher firme, emocionalmente consciente e cansada de ser obrigada a aceitar desrespeito em nome da paz familiar. Não busca conflito — mas decide que consideração sem reciprocidade não existe. Representa quem para de tolerar invasões disfarçadas de “família”.",
+      "Protagonista Masculino: O “Filho mediador”",
+      "Homem acostumado a minimizar comportamentos da mãe para evitar conflitos. Acredita que todo problema familiar pode ser resolvido com “deixa pra lá”, sem perceber que neutralidade constante vira omissão.",
+      "Antagonista Ausente: A “Sogra estrategista”",
+      "Não aparece diretamente na discussão, mas domina toda a narrativa. Mantém vínculo com a ex do filho e ultrapassa limites ao tentar interferir simbolicamente no casamento atual. Representa familiares que confundem proximidade com direito de decisão.",
+      "Personagem Invisível de Tensão: A “Ex que nunca saiu da história”",
+      "Mesmo sem aparecer, continua sendo usada como elemento de comparação e desestabilização dentro do relacionamento."
+    ],
+    "timeline": [
+      "0–20s (O Gancho): O convite que não chegou",
+      "O marido confronta a esposa:",
+      "“Todo mundo recebeu convite. Minha mãe não.”",
+      "Resposta direta:",
+      "“Ela não foi convidada.”",
+      "Choque imediato.",
+      "20–50s (A Defesa do passado)",
+      "O marido tenta diminuir o ocorrido:",
+      "“Isso já passou.”",
+      "Mas a esposa relembra o motivo:",
+      "No aniversário anterior, a sogra levou a ex dele sem avisar.",
+      "O público entende que existe histórico.",
+      "50–80s (A Revelação do limite)",
+      "A protagonista deixa claro:",
+      "Não é vingança.",
+      "É consequência.",
+      "Ela não quer repetir uma situação onde se sentiu desrespeitada no próprio momento especial.",
+      "80–110s (O Conflito de prioridades)",
+      "O marido insiste:",
+      "“Minha mãe quer ir.”",
+      "Ela responde:",
+      "“O aniversário é meu.”",
+      "Pela primeira vez o centro deixa de ser agradar terceiros.",
+      "110–130s (O Clímax emocional)",
+      "Ela encerra:",
+      "“Respeito é via de mão dupla.”",
+      "Entrega a decisão para o público:",
+      "“Eu tô certa ou errada?”",
+      "Comentário garantido."
+    ],
+    "replaceable_elements": [
+      "A. Levar a ex para o aniversário da atual (Versão atual)",
+      "B. Convidar parentes sem avisar",
+      "C. Fazer comentários comparando com ex",
+      "D. Tentar decidir convidados do casal",
+      "A. Festa de aniversário (Versão atual)",
+      "B. Chá revelação",
+      "C. Casamento civil",
+      "D. Jantar comemorativo",
+      "A. Sogra (Versão atual)",
+      "B. Cunhada",
+      "C. Irmã do parceiro",
+      "D. Pai controlador",
+      "A. Minimizar o problema (Versão atual)",
+      "B. Pedir para relevar",
+      "C. Ficar neutro",
+      "D. Defender parcialmente",
+      "A. Não convidar novamente (Versão atual)",
+      "B. Estabelecer regra clara para eventos",
+      "C. Cancelar participação familiar",
+      "D. Fazer conversa definitiva",
+      "A. Entrega dos convites e ausência de um nome",
+      "B. Silêncio após lembrar da ex aparecendo na festa",
+      "C. Frase: “O aniversário é meu.”",
+      "D. Homem percebendo que pedir paz não resolve falta de respeito"
+    ],
+    "replaceable_sections": [
+      {
+        "title": "Conflito Central (Forma de invasão familiar)",
+        "items": [
+          "A. Levar a ex para o aniversário da atual (Versão atual)",
+          "B. Convidar parentes sem avisar",
+          "C. Fazer comentários comparando com ex",
+          "D. Tentar decidir convidados do casal"
+        ]
+      },
+      {
+        "title": "Evento que gera ruptura",
+        "items": [
+          "A. Festa de aniversário (Versão atual)",
+          "B. Chá revelação",
+          "C. Casamento civil",
+          "D. Jantar comemorativo"
+        ]
+      },
+      {
+        "title": "Figura que ultrapassa limites",
+        "items": [
+          "A. Sogra (Versão atual)",
+          "B. Cunhada",
+          "C. Irmã do parceiro",
+          "D. Pai controlador"
+        ]
+      },
+      {
+        "title": "Reação do parceiro",
+        "items": [
+          "A. Minimizar o problema (Versão atual)",
+          "B. Pedir para relevar",
+          "C. Ficar neutro",
+          "D. Defender parcialmente"
+        ]
+      },
+      {
+        "title": "Forma da protagonista impor limite",
+        "items": [
+          "A. Não convidar novamente (Versão atual)",
+          "B. Estabelecer regra clara para eventos",
+          "C. Cancelar participação familiar",
+          "D. Fazer conversa definitiva"
+        ]
+      },
+      {
+        "title": "Cenas de Impacto (Ações)",
+        "items": [
+          "A. Entrega dos convites e ausência de um nome",
+          "B. Silêncio após lembrar da ex aparecendo na festa",
+          "C. Frase: “O aniversário é meu.”",
+          "D. Homem percebendo que pedir paz não resolve falta de respeito"
+        ]
+      }
+    ],
+    "notes": []
+  },
+  {
+    "id": "junho-gostaram-da-surpresa-dele-5ebff3",
+    "created_at": "2026-06-01T00:00:00Z",
+    "title": "Gostaram da surpresa dele?!",
+    "month": "Junho",
+    "grand_theme": "Drama familiar",
+    "category": "Tema viral",
+    "persona": "Homem Imaturo",
+    "source_url": "https://www.kwai.com/@dramarealof/video/5225170104446580085",
+    "hook": "0–20s (O Gancho): O presente pequeno demais",
+    "summary": "Junho | Drama familiar | Tema viral | Gostaram da surpresa dele?!",
+    "tags": [],
+    "character_profiles": [
+      "Protagonista Masculino: O “Filho que ama em silêncio”",
+      "Homem reservado, pouco expressivo e acostumado a demonstrar carinho através de atitudes em vez de palavras. Mesmo sendo frequentemente julgado como distante, guarda atenção aos detalhes e espera o momento certo para surpreender.",
+      "Protagonista Feminina (Personagem emocional): A “Mãe que sempre espera pouco”",
+      "Mulher simples, econômica e acostumada a escolher o mais barato para não pesar para os filhos. Tem baixa expectativa quando recebe cuidado porque passou anos priorizando os outros antes dela.",
+      "Personagem Secundária (Agente de conflito): A “Irmã protetora”",
+      "Filha observadora e impulsiva que se incomoda com qualquer sinal de injustiça contra a mãe. Interpreta rapidamente as situações e vira a voz da indignação que o público sentiria.",
+      "Personagem Espelho: A “Sogra imaginária”",
+      "Nunca aparece, mas funciona como gatilho emocional da narrativa — representa o medo comum de que filhos valorizem mais a família que entrou do que a família que construiu."
+    ],
+    "timeline": [
+      "0–20s (O Gancho): O presente pequeno demais",
+      "Mãe é levada para escolher presente de aniversário.",
+      "Ela escolhe uma simples panela de pipoca.",
+      "O filho estranha.",
+      "O público pensa:",
+      "“Será que ela escolheu o mais barato?”",
+      "20–50s (A Comparação que dói)",
+      "Por acaso encontram o irmão na loja.",
+      "Ele diz estar comprando presente para a sogra.",
+      "E para a própria mãe?",
+      "“Depois eu compro uma lembrancinha.”",
+      "Clima imediato de decepção.",
+      "50–80s (O Julgamento antecipado)",
+      "A irmã se revolta.",
+      "Começa a surgir a narrativa:",
+      "“Sogra é prioridade e mãe fica pra depois.”",
+      "A mãe tenta defender o filho.",
+      "O público compra totalmente a indignação.",
+      "80–110s (A Virada emocional)",
+      "O filho aparece depois com um presente.",
+      "Revelação:",
+      "Tudo era surpresa.",
+      "A máquina de lavar era para a mãe.",
+      "O discurso anterior muda completamente.",
+      "110–130s (O Clímax afetivo)",
+      "A mãe percebe que o filho lembrava dela o tempo todo.",
+      "A irmã fica sem reação.",
+      "O filho explica:",
+      "“Só queria fazer uma surpresa.”",
+      "Encerramento com sensação de acolhimento."
+    ],
+    "replaceable_elements": [
+      "A. Presente para sogra antes da mãe (Versão atual)",
+      "B. Esquecer data especial",
+      "C. Gastar com terceiros primeiro",
+      "D. Recusar convite da família",
+      "A. Máquina de lavar (Versão atual)",
+      "B. Fogão novo",
+      "C. Geladeira",
+      "D. Colchão ou poltrona",
+      "A. Escolhe sempre o mais barato (Versão atual)",
+      "B. Diz que não precisa de nada",
+      "C. Guarda dinheiro dos filhos",
+      "D. Nunca pede presente",
+      "A. Irmã protetora (Versão atual)",
+      "B. Vizinha",
+      "C. Outro irmão",
+      "D. Nora",
+      "A. Fingir que era para outra pessoa (Versão atual)",
+      "B. Esconder compra",
+      "C. Fazer entrega inesperada",
+      "D. Fingir esquecimento",
+      "A. Mãe escolhendo objeto barato",
+      "B. Filho dizendo que o presente era para outra pessoa",
+      "C. Expressão silenciosa da mãe escondendo tristeza",
+      "D. Revelação final com entrega do presente"
+    ],
+    "replaceable_sections": [
+      {
+        "title": "Falsa impressão inicial (Motivo do julgamento)",
+        "items": [
+          "A. Presente para sogra antes da mãe (Versão atual)",
+          "B. Esquecer data especial",
+          "C. Gastar com terceiros primeiro",
+          "D. Recusar convite da família"
+        ]
+      },
+      {
+        "title": "Tipo de presente simbólico",
+        "items": [
+          "A. Máquina de lavar (Versão atual)",
+          "B. Fogão novo",
+          "C. Geladeira",
+          "D. Colchão ou poltrona"
+        ]
+      },
+      {
+        "title": "Perfil da mãe",
+        "items": [
+          "A. Escolhe sempre o mais barato (Versão atual)",
+          "B. Diz que não precisa de nada",
+          "C. Guarda dinheiro dos filhos",
+          "D. Nunca pede presente"
+        ]
+      },
+      {
+        "title": "Quem gera o conflito",
+        "items": [
+          "A. Irmã protetora (Versão atual)",
+          "B. Vizinha",
+          "C. Outro irmão",
+          "D. Nora"
+        ]
+      },
+      {
+        "title": "Forma da surpresa",
+        "items": [
+          "A. Fingir que era para outra pessoa (Versão atual)",
+          "B. Esconder compra",
+          "C. Fazer entrega inesperada",
+          "D. Fingir esquecimento"
+        ]
+      },
+      {
+        "title": "Cenas de Impacto (Ações)",
+        "items": [
+          "A. Mãe escolhendo objeto barato",
+          "B. Filho dizendo que o presente era para outra pessoa",
+          "C. Expressão silenciosa da mãe escondendo tristeza",
+          "D. Revelação final com entrega do presente"
+        ]
+      }
+    ],
+    "notes": []
+  },
+  {
+    "id": "junho-comida-pronta-amor-invisivel-dbd4cd",
+    "created_at": "2026-06-01T00:00:00Z",
+    "title": "Comida Pronta, Amor Invisível",
+    "month": "Junho",
+    "grand_theme": "Drama familiar",
+    "category": "Tema viral",
+    "persona": "Esposa Sobrecarregada",
+    "source_url": "https://www.kwai.com/@carlaebia/video/5258384151269107585",
+    "hook": "0–20s (O Gancho): A cozinha vazia",
+    "summary": "Junho | Drama familiar | Tema viral | Comida Pronta, Amor Invisível",
+    "tags": [],
+    "character_profiles": [
+      "Protagonista Feminina: A “Esposa que cansou de ser invisível”",
+      "Mulher trabalhadora, prática e acostumada a manter tudo funcionando dentro de casa sem reconhecimento. No único dia de folga escolhe cuidar da casa inteira, mas se recusa a aceitar que esse esforço seja tratado como obrigação silenciosa.",
+      "Protagonista Masculino (Antagonista): O “Marido criado para ser servido”",
+      "Homem acostumado com um modelo tradicional onde cuidado doméstico é prova de amor. Não percebe o trabalho invisível da esposa e mede dedicação pela existência de comida pronta na mesa.",
+      "Personagem Invisível de Comparação: A “Mãe idealizada”",
+      "Nunca aparece, mas influencia toda a discussão. Funciona como referência emocional usada pelo marido para justificar expectativas que tenta reproduzir no casamento."
+    ],
+    "timeline": [
+      "0–20s (O Gancho): A cozinha vazia",
+      "O marido chega com fome.",
+      "Vai direto procurar panela no fogo.",
+      "Não encontra nada.",
+      "Primeira reclamação:",
+      "“Cadê o almoço?”",
+      "O público já sente que vem conflito.",
+      "20–50s (A Solução que ele rejeita)",
+      "A esposa explica:",
+      "Passou o dia inteiro limpando a casa.",
+      "Por isso pediu marmita.",
+      "Tudo organizado.",
+      "Tudo limpo.",
+      "Mas ele rejeita imediatamente.",
+      "50–80s (A Comparação que piora tudo)",
+      "Ele diz que não gosta de marmita.",
+      "Compara com restaurante.",
+      "E dispara:",
+      "“Meu pai nunca ficou sem comida pronta.”",
+      "A esposa percebe que não estão discutindo almoço — estão discutindo papel dentro do casamento.",
+      "80–110s (O Contra-ataque)",
+      "Ela enumera tudo que fez.",
+      "Enquanto ele saiu para lazer.",
+      "Depois lança a frase central:",
+      "“Você não quer esposa. Você quer empregada.”",
+      "O público escolhe um lado.",
+      "110–130s (O Clímax de posicionamento)",
+      "Ela recolhe a marmita.",
+      "Diz que quem passar com fome vai valorizar.",
+      "E encerra:",
+      "“Se quer mãe, volta pra casa dela.”",
+      "Final com sensação de limite estabelecido."
+    ],
+    "replaceable_elements": [
+      "A. Reclamar que não teve almoço pronto (Versão atual)",
+      "B. Exigir roupa passada",
+      "C. Cobrar casa impecável",
+      "D. Esperar atendimento constante",
+      "A. Faxina geral da casa (Versão atual)",
+      "B. Organizar mudança",
+      "C. Resolver contas e burocracias",
+      "D. Cuidar dos filhos o dia inteiro",
+      "A. “Minha mãe fazia diferente” (Versão atual)",
+      "B. “Minha avó fazia tudo”",
+      "C. “Mulher de verdade faz assim”",
+      "D. “Na casa dos meus amigos é diferente”",
+      "A. Recusar cozinhar depois (Versão atual)",
+      "B. Parar de assumir tudo sozinha",
+      "C. Dividir tarefas oficialmente",
+      "D. Sair de casa por um dia",
+      "A. Marmita (Versão atual)",
+      "B. Roupa acumulada",
+      "C. Máquina de lavar",
+      "D. Lista de tarefas",
+      "A. Homem abrindo panelas vazias",
+      "B. Marmita sendo colocada na mesa",
+      "C. Mulher mostrando tudo que limpou",
+      "D. Retirar a comida depois da reclamação"
+    ],
+    "replaceable_sections": [
+      {
+        "title": "Conflito Central (Expectativa doméstica)",
+        "items": [
+          "A. Reclamar que não teve almoço pronto (Versão atual)",
+          "B. Exigir roupa passada",
+          "C. Cobrar casa impecável",
+          "D. Esperar atendimento constante"
+        ]
+      },
+      {
+        "title": "Trabalho invisível realizado pela protagonista",
+        "items": [
+          "A. Faxina geral da casa (Versão atual)",
+          "B. Organizar mudança",
+          "C. Resolver contas e burocracias",
+          "D. Cuidar dos filhos o dia inteiro"
+        ]
+      },
+      {
+        "title": "Comparação usada pelo parceiro",
+        "items": [
+          "A. “Minha mãe fazia diferente” (Versão atual)",
+          "B. “Minha avó fazia tudo”",
+          "C. “Mulher de verdade faz assim”",
+          "D. “Na casa dos meus amigos é diferente”"
+        ]
+      },
+      {
+        "title": "Forma da protagonista impor limite",
+        "items": [
+          "A. Recusar cozinhar depois (Versão atual)",
+          "B. Parar de assumir tudo sozinha",
+          "C. Dividir tarefas oficialmente",
+          "D. Sair de casa por um dia"
+        ]
+      },
+      {
+        "title": "Objeto simbólico da discussão",
+        "items": [
+          "A. Marmita (Versão atual)",
+          "B. Roupa acumulada",
+          "C. Máquina de lavar",
+          "D. Lista de tarefas"
+        ]
+      },
+      {
+        "title": "Cenas de Impacto (Ações)",
+        "items": [
+          "A. Homem abrindo panelas vazias",
+          "B. Marmita sendo colocada na mesa",
+          "C. Mulher mostrando tudo que limpou",
+          "D. Retirar a comida depois da reclamação"
+        ]
+      }
+    ],
+    "notes": []
+  },
+  {
+    "id": "junho-teste-de-honestidade-45fa2b",
+    "created_at": "2026-06-01T00:00:00Z",
+    "title": "Teste de Honestidade",
+    "month": "Junho",
+    "grand_theme": "Drama Social",
+    "category": "Tema geral",
+    "persona": "Mulher que Bota Limite",
+    "source_url": "https://www.kwai.com/@btyej062/video/5212222256836946689",
+    "hook": "0–20s (O Gancho): O teste inesperado",
+    "summary": "Junho | Drama Social | Tema geral | Teste de Honestidade",
+    "tags": [],
+    "character_profiles": [
+      "Protagonista Feminina (Vítima Moral): A “Empregada Honesta”",
+      "Mulher simples, responsável e emocionalmente pressionada pela vida. Trabalha há muito tempo na mesma casa, está vivendo um momento difícil porque a mãe está internada e, mesmo diante da necessidade financeira, mantém o valor pessoal acima da urgência.",
+      "Protagonista Feminina (Agente do Teste): A “Patroa que acredita nas pessoas”",
+      "Uma mulher sensível e generosa, mas que valida confiança através de testes silenciosos. Ao ouvir sobre o problema da funcionária, decide criar uma situação para descobrir se a honestidade dela é real antes de ajudá-la.",
+      "Antagonista: A “Irmã Oportunista”",
+      "Representa o preconceito social e a ganância escondida atrás do discurso racional. Julga a empregada antes dos fatos e usa sua posição de confiança para se apropriar do dinheiro, manipulando a percepção da irmã."
+    ],
+    "timeline": [
+      "0–20s (O Gancho): O teste inesperado",
+      "A empregada está saindo às pressas porque a mãe está internada.",
+      "A patroa escuta.",
+      "Observa.",
+      "E toma uma decisão secreta:",
+      "coloca mil reais dentro da bolsa dela.",
+      "O público entra imediatamente no conflito:",
+      "“O que ela vai fazer?”",
+      "20–50s (A Prova de caráter)",
+      "No caminho, a funcionária encontra o dinheiro.",
+      "Poderia usar.",
+      "Está precisando.",
+      "Mas conclui rapidamente:",
+      "“Esse dinheiro não é meu.”",
+      "Decide voltar imediatamente.",
+      "A tensão muda de necessidade para honestidade.",
+      "50–85s (O Bloqueio injusto)",
+      "A patroa não está.",
+      "Quem recebe é a irmã.",
+      "A empregada insiste em devolver pessoalmente.",
+      "A irmã começa a interpretar isso como desconfiança.",
+      "Pressiona emocionalmente.",
+      "Consegue pegar o dinheiro.",
+      "O público percebe o golpe antes dos personagens.",
+      "85–115s (A Inversão da narrativa)",
+      "A irmã mente.",
+      "Conta que viu a empregada indo embora com dinheiro.",
+      "Convence a patroa de que ela foi desonesta.",
+      "A patroa fica dividida entre o teste e a confiança construída.",
+      "115–130s (Clímax com gancho)",
+      "A irmã entra em desespero:",
+      "“Ela não pode descobrir que fui eu.”",
+      "O episódio termina antes da verdade aparecer.",
+      "Gera retenção e continuação automática."
+    ],
+    "replaceable_elements": [
+      "A. Dinheiro colocado na bolsa (Versão atual)",
+      "B. Carteira deixada na mesa",
+      "C. Envelope com dinheiro esquecido",
+      "D. Transferência enviada “por engano”",
+      "A. Mãe internada (Versão atual)",
+      "B. Filho precisando de remédio",
+      "C. Aluguel atrasado",
+      "D. Dívida urgente",
+      "A. Irmã da patroa (Versão atual)",
+      "B. Filho da patroa",
+      "C. Vizinha interesseira",
+      "D. Administrador da casa",
+      "A. Mentir sobre o comportamento da empregada (Versão atual)",
+      "B. Dizer que ela já fez isso antes",
+      "C. Inventar histórico de furtos",
+      "D. Alterar provas",
+      "A. Mudar a vida dela (Versão atual)",
+      "B. Promoção e aumento",
+      "C. Pagar tratamento médico",
+      "D. Ajudar a abrir negócio",
+      "A. Dinheiro entrando discretamente na bolsa",
+      "B. Empregada olhando o dinheiro e fechando a bolsa sem tocar",
+      "C. Discussão silenciosa na porta da casa",
+      "D. Expressão da irmã percebendo que criou um problema"
+    ],
+    "replaceable_sections": [
+      {
+        "title": "Tipo de teste de honestidade",
+        "items": [
+          "A. Dinheiro colocado na bolsa (Versão atual)",
+          "B. Carteira deixada na mesa",
+          "C. Envelope com dinheiro esquecido",
+          "D. Transferência enviada “por engano”"
+        ]
+      },
+      {
+        "title": "Situação de vulnerabilidade da protagonista",
+        "items": [
+          "A. Mãe internada (Versão atual)",
+          "B. Filho precisando de remédio",
+          "C. Aluguel atrasado",
+          "D. Dívida urgente"
+        ]
+      },
+      {
+        "title": "Figura que tenta roubar a oportunidade",
+        "items": [
+          "A. Irmã da patroa (Versão atual)",
+          "B. Filho da patroa",
+          "C. Vizinha interesseira",
+          "D. Administrador da casa"
+        ]
+      },
+      {
+        "title": "Forma de manipulação",
+        "items": [
+          "A. Mentir sobre o comportamento da empregada (Versão atual)",
+          "B. Dizer que ela já fez isso antes",
+          "C. Inventar histórico de furtos",
+          "D. Alterar provas"
+        ]
+      },
+      {
+        "title": "Recompensa prometida",
+        "items": [
+          "A. Mudar a vida dela (Versão atual)",
+          "B. Promoção e aumento",
+          "C. Pagar tratamento médico",
+          "D. Ajudar a abrir negócio"
+        ]
+      },
+      {
+        "title": "Cenas de Impacto (Ações)",
+        "items": [
+          "A. Dinheiro entrando discretamente na bolsa",
+          "B. Empregada olhando o dinheiro e fechando a bolsa sem tocar",
+          "C. Discussão silenciosa na porta da casa",
+          "D. Expressão da irmã percebendo que criou um problema"
+        ]
+      }
+    ],
+    "notes": []
+  },
+  {
+    "id": "junho-a-decisao-deles-a-minha-resposta-93247f",
+    "created_at": "2026-06-01T00:00:00Z",
+    "title": "A Decisão Deles, A Minha Resposta",
+    "month": "Junho",
+    "grand_theme": "Drama familiar",
+    "category": "Tema viral",
+    "persona": "Mulher que Bota Limite",
+    "source_url": "https://www.kwai.com/@carlaebia/video/5232769928359577760",
+    "hook": "0–20s (O Gancho): O assunto começa leve… mas já veio decidido",
+    "summary": "Junho | Drama familiar | Tema viral | A Decisão Deles, A Minha Resposta",
+    "tags": [],
+    "character_profiles": [
+      "Protagonista Feminina: A “Filha que não terceiriza amor”",
+      "Mulher madura, cuidadora e emocionalmente firme. Recebe a mãe em casa depois de um acidente e entende o cuidado não como obrigação, mas como retribuição. Representa o limite entre ajuda prática e abandono afetivo.",
+      "Protagonista Masculino (Antagonista Secundário): O “Marido que chama conveniência de solução”",
+      "Não é cruel de forma explícita, mas coloca conforto pessoal acima do vínculo familiar da esposa. Usa argumentos de praticidade, rotina e falta de tempo para justificar afastar a sogra.",
+      "Antagonista Principal: A “Sogra estrategista”",
+      "Mulher que influencia silenciosamente o filho e tenta transformar uma decisão familiar em algo já resolvido. Representa o duplo padrão: considera natural cuidar dela própria, mas sugere institucionalizar a mãe da nora.",
+      "Personagem Catalisadora: A “Mãe que perdeu autonomia, mas não dignidade”",
+      "Idosa que sofreu uma queda e momentaneamente precisa de apoio. Mesmo fragilizada, nunca pediu para ser descartada."
+    ],
+    "timeline": [
+      "0–20s (O Gancho): O assunto começa leve… mas já veio decidido",
+      "Marido chega em casa.",
+      "Pergunta pela sogra.",
+      "Tudo parece normal.",
+      "Até revelar:",
+      "“Eu e minha mãe estávamos conversando sobre outras possibilidades…”",
+      "O público percebe imediatamente que existe plano escondido.",
+      "20–50s (A Emboscada emocional)",
+      "A sogra assume a fala.",
+      "Diz que encontrou um lugar maravilhoso.",
+      "Casa de repouso.",
+      "Tudo embalado como cuidado.",
+      "Mas o discurso deixa escapar o verdadeiro motivo:",
+      "“Tá dando muito trabalho.”",
+      "O desconforto cresce.",
+      "50–85s (A Armadilha da lógica)",
+      "Marido tenta justificar:",
+      "Remédio.",
+      "Piscina.",
+      "Horários.",
+      "Tempo do casal.",
+      "A proposta é apresentada como racional.",
+      "O público entende que o verdadeiro conflito não é estrutura — é prioridade.",
+      "85–115s (A Virada da protagonista)",
+      "Carla escuta.",
+      "Concorda parcialmente.",
+      "Aceita ajuda profissional.",
+      "Mas corta o plano principal:",
+      "“Gostei da parte da cuidadora. A parte de tirar minha mãe daqui, leve a sua.”",
+      "Momento de aplauso emocional.",
+      "115–130s (Clímax \\+ posicionamento)",
+      "Ela desmonta o argumento com uma inversão:",
+      "“Quando é pra minha mãe o lugar é maravilhoso. Quando é pra sua já não presta.”",
+      "Encerra afirmando:",
+      "“Mãe cuidou de mim a vida inteira. Agora sou eu.”",
+      "Final com forte ativação de comentários."
+    ],
+    "replaceable_elements": [
+      "A. Recuperação após queda (Versão atual)",
+      "B. Cirurgia recente",
+      "C. Tratamento médico contínuo",
+      "D. Limitação temporária de mobilidade",
+      "A. “Vai receber cuidado profissional” (Versão atual)",
+      "B. “Casa não tem estrutura”",
+      "C. “Vai ter companhia”",
+      "D. “O casal precisa de espaço”",
+      "A. Sogra do casal (Versão atual)",
+      "B. Irmão distante que não ajuda",
+      "C. Cônjuge controlador",
+      "D. Filho que mora longe",
+      "A. Contratar cuidadora sem afastar a mãe (Versão atual)",
+      "B. Dividir responsabilidades",
+      "C. Adaptar a casa",
+      "D. Redefinir limites do casamento",
+      "A. Não aceitar para a própria mãe (Versão atual)",
+      "B. Nunca visitar idosos",
+      "C. Não ajudar financeiramente",
+      "D. Defender cuidado apenas para os outros",
+      "A. Café sendo servido enquanto o plano é revelado",
+      "B. Mostrar opções no celular como se já estivesse decidido",
+      "C. Silêncio antes da protagonista responder",
+      "D. Frase final olhando diretamente para o marido"
+    ],
+    "replaceable_sections": [
+      {
+        "title": "Motivo que gera dependência do pai/mãe",
+        "items": [
+          "A. Recuperação após queda (Versão atual)",
+          "B. Cirurgia recente",
+          "C. Tratamento médico contínuo",
+          "D. Limitação temporária de mobilidade"
+        ]
+      },
+      {
+        "title": "Justificativa usada para afastar o familiar",
+        "items": [
+          "A. “Vai receber cuidado profissional” (Versão atual)",
+          "B. “Casa não tem estrutura”",
+          "C. “Vai ter companhia”",
+          "D. “O casal precisa de espaço”"
+        ]
+      },
+      {
+        "title": "Figura que pressiona pela decisão",
+        "items": [
+          "A. Sogra do casal (Versão atual)",
+          "B. Irmão distante que não ajuda",
+          "C. Cônjuge controlador",
+          "D. Filho que mora longe"
+        ]
+      },
+      {
+        "title": "Forma de resposta da protagonista",
+        "items": [
+          "A. Contratar cuidadora sem afastar a mãe (Versão atual)",
+          "B. Dividir responsabilidades",
+          "C. Adaptar a casa",
+          "D. Redefinir limites do casamento"
+        ]
+      },
+      {
+        "title": "Contradição que expõe hipocrisia",
+        "items": [
+          "A. Não aceitar para a própria mãe (Versão atual)",
+          "B. Nunca visitar idosos",
+          "C. Não ajudar financeiramente",
+          "D. Defender cuidado apenas para os outros"
+        ]
+      },
+      {
+        "title": "Cenas de Impacto (Ações)",
+        "items": [
+          "A. Café sendo servido enquanto o plano é revelado",
+          "B. Mostrar opções no celular como se já estivesse decidido",
+          "C. Silêncio antes da protagonista responder",
+          "D. Frase final olhando diretamente para o marido"
+        ]
+      }
+    ],
+    "notes": []
+  },
+  {
+    "id": "junho-a-irma-sem-limites-454669",
+    "created_at": "2026-06-01T00:00:00Z",
+    "title": "A Irmã Sem Limites",
+    "month": "Junho",
+    "grand_theme": "Drama familiar",
+    "category": "Tema viral",
+    "persona": "Parente Folgado",
+    "source_url": "https://www.kwai.com/@familiacarvalhoof/video/5231644027890945950",
+    "hook": "0–20s (O Gancho): A conversa escondida",
+    "summary": "Junho | Drama familiar | Tema viral | A Irmã Sem Limites",
+    "tags": [],
+    "character_profiles": [
+      "Protagonista Masculino (Vítima Indireta): O “Dono Invisível”",
+      "Homem tranquilo, que confia no ambiente da própria casa e não imagina que seus pertences possam ser tratados como objetos sem dono. Representa o desconforto universal de descobrir que alguém decidiu por você.",
+      "Protagonista Feminina (Agente de Conflito): A “Namorada sem limite”",
+      "Impulsiva, emocional e guiada pela lógica do “ninguém usa”. Acredita que estar próxima das pessoas lhe dá direito de administrar coisas que não são dela. Não enxerga a diferença entre emprestar o próprio objeto e disponibilizar algo alheio.",
+      "Personagem de Apoio (Consciência do Público): A “Amiga que enxerga o absurdo”",
+      "Observadora e direta. É quem verbaliza o incômodo que o espectador sente desde o início. Funciona como freio moral da história.",
+      "Personagem Ausente (Motor do conflito): O “Namorado Prioridade”",
+      "Nem aparece, mas influencia toda a ação. Representa a lógica do relacionamento onde agradar o parceiro passa por cima de respeito e limites."
+    ],
+    "timeline": [
+      "0–20s (O Gancho): A conversa escondida",
+      "A amiga chega em casa.",
+      "Encontra Nicole mais cedo.",
+      "Tudo parece normal.",
+      "Até ouvir uma ligação:",
+      "“Vou levar… ninguém usa mesmo.”",
+      "Mistério imediato.",
+      "O público tenta descobrir o que está sendo escondido.",
+      "20–50s (A Descoberta absurda)",
+      "Nicole revela:",
+      "vai emprestar o videogame.",
+      "Só que não é dela.",
+      "Nem avisou ninguém.",
+      "Justificativa:",
+      "“Tá parado mesmo.”",
+      "Nesse momento o público escolhe lado.",
+      "50–80s (O Conflito moral)",
+      "A amiga confronta:",
+      "“Você pediu?”",
+      "Nicole responde que não precisa pedir.",
+      "Transforma ausência de uso em autorização.",
+      "Escalada rápida porque a lógica parece absurda.",
+      "80–110s (O Flagrante)",
+      "Na hora de sair com o videogame.",
+      "Surge o dono.",
+      "Pergunta diretamente:",
+      "“Por que você tá com meu videogame?”",
+      "Nicole ainda tenta normalizar.",
+      "A tensão explode.",
+      "110–130s (Clímax aberto)",
+      "Ela insiste:",
+      "“É só emprestado.”",
+      "Os outros reforçam:",
+      "“Não é seu.”",
+      "O episódio termina sem mostrar a consequência.",
+      "Gancho perfeito para continuação."
+    ],
+    "replaceable_elements": [
+      "A. Videogame (Versão atual)",
+      "B. Notebook",
+      "C. Bicicleta",
+      "D. Câmera fotográfica",
+      "A. “Ninguém usa mesmo” (Versão atual)",
+      "B. “Era só por alguns dias”",
+      "C. “Ele nem ia perceber”",
+      "D. “Depois eu compro outro”",
+      "A. Namorado (Versão atual)",
+      "B. Melhor amiga",
+      "C. Irmão",
+      "D. Primo",
+      "A. Flagrante na saída (Versão atual)",
+      "B. Foto nas redes sociais",
+      "C. Ligação de terceiros",
+      "D. Pedido de devolução",
+      "A. Pergunta direta (Versão atual)",
+      "B. Ironia calma",
+      "C. Exposição diante da família",
+      "D. Dar exemplo invertido",
+      "A. Ligação escondida combinando entrega",
+      "B. Colocar objeto discretamente na mochila",
+      "C. Congelar ao ser pega na porta",
+      "D. Silêncio quando perguntam: “Você pediu?”"
+    ],
+    "replaceable_sections": [
+      {
+        "title": "Objeto do conflito (Pertence que não pertence à protagonista)",
+        "items": [
+          "A. Videogame (Versão atual)",
+          "B. Notebook",
+          "C. Bicicleta",
+          "D. Câmera fotográfica"
+        ]
+      },
+      {
+        "title": "Motivo usado para justificar",
+        "items": [
+          "A. “Ninguém usa mesmo” (Versão atual)",
+          "B. “Era só por alguns dias”",
+          "C. “Ele nem ia perceber”",
+          "D. “Depois eu compro outro”"
+        ]
+      },
+      {
+        "title": "Pessoa beneficiada",
+        "items": [
+          "A. Namorado (Versão atual)",
+          "B. Melhor amiga",
+          "C. Irmão",
+          "D. Primo"
+        ]
+      },
+      {
+        "title": "Tipo de descoberta",
+        "items": [
+          "A. Flagrante na saída (Versão atual)",
+          "B. Foto nas redes sociais",
+          "C. Ligação de terceiros",
+          "D. Pedido de devolução"
+        ]
+      },
+      {
+        "title": "Forma de confronto",
+        "items": [
+          "A. Pergunta direta (Versão atual)",
+          "B. Ironia calma",
+          "C. Exposição diante da família",
+          "D. Dar exemplo invertido"
+        ]
+      },
+      {
+        "title": "Cenas de Impacto (Ações)",
+        "items": [
+          "A. Ligação escondida combinando entrega",
+          "B. Colocar objeto discretamente na mochila",
+          "C. Congelar ao ser pega na porta",
+          "D. Silêncio quando perguntam: “Você pediu?”"
+        ]
+      }
+    ],
+    "notes": []
+  },
+  {
+    "id": "junho-dia-das-maes-com-a-ex-mulher-813e68",
+    "created_at": "2026-06-01T00:00:00Z",
+    "title": "Dia das Mães com a Ex-Mulher",
+    "month": "Junho",
+    "grand_theme": "Drama de relacionamento",
+    "category": "Tema viral",
+    "persona": "Homem Imaturo",
+    "source_url": "https://www.kwai.com/@carlaebia/video/5210251930882334408",
+    "hook": "0–20s (O Gancho): O retorno normal demais",
+    "summary": "Junho | Drama de relacionamento | Tema viral | Dia das Mães com a Ex-Mulher",
+    "tags": [],
+    "character_profiles": [
+      "Protagonista Feminina (Vítima): A “Esposa Invisibilizada”",
+      "Uma mulher que não está disputando espaço com a sogra — está exigindo respeito dentro do próprio casamento. Ela aceita o vínculo familiar do marido, mas não aceita ser colocada em segundo plano. Representa o medo coletivo de ser “a última prioridade” dentro da própria relação.",
+      "Protagonista Masculino (Agente do conflito): O “Filho que nunca saiu da casa da mãe”",
+      "Homem que acredita que neutralidade é inocência. Usa justificativas como “a casa é da minha mãe” e “não posso controlar quem está lá”, mas escolhe se omitir diante de situações que machucam a esposa. Representa o parceiro que evita conflito externo e transfere o peso emocional para dentro do casamento.",
+      "Antagonista Secundária: A “Ex que nunca saiu da cena”",
+      "Não precisa agir diretamente. Sua presença já cria desconforto. Funciona como símbolo da falta de limites emocionais e do espaço mal encerrado do passado.",
+      "Antagonista Invisível: A “Prioridade Mal Definida”",
+      "O verdadeiro problema não é a sogra nem a ex — é a ausência de posicionamento do marido."
+    ],
+    "timeline": [
+      "0–20s (O Gancho): O retorno normal demais",
+      "O marido chega em casa como se nada tivesse acontecido após passar o Dia das Mães fora e dormir fora.",
+      "A esposa aparentemente está calma — o público já sente que ela sabe de alguma coisa.",
+      "20–50s (A Descoberta Pública)",
+      "Ela revela que viu todas as postagens da comemoração: almoço em família, presença da ex e clima de “família reunida”.",
+      "A indignação cresce porque ela descobre tudo pelas redes sociais.",
+      "50–85s (A Justificativa que piora tudo)",
+      "O marido tenta minimizar:",
+      "“Era casa da minha mãe.”",
+      "“Ela convida quem quiser.”",
+      "“Meu celular descarregou.”",
+      "Cada justificativa aumenta o sentimento de abandono.",
+      "85–115s (O Limite Emocional)",
+      "A esposa muda o foco:",
+      "o problema não foi almoçar com a mãe — foi escolher ficar, dormir e deixá-la sozinha.",
+      "Frase implícita que viraliza:",
+      "“Você não esqueceu de mim. Você escolheu não me incluir.”",
+      "115–130s (O Clímax \\+ Expulsão)",
+      "Ela decide encerrar:",
+      "“Se você já passou o Dia das Mães lá, ano que vem nem precisa sair daqui.”",
+      "Fechamento com pergunta para audiência:",
+      "“Vocês aceitariam essa situação?”"
+    ],
+    "replaceable_elements": [
+      "A. Dormir na casa da mãe com presença da ex (Versão atual)",
+      "B. Cancelar programa com esposa para atender família",
+      "C. Levar ex para evento familiar escondido",
+      "D. Ignorar data importante do casal",
+      "A. Redes sociais mostrando tudo (Versão atual)",
+      "B. Story marcado por terceiros",
+      "C. Foto enviada por familiar",
+      "D. Localização compartilhada sem querer",
+      "A. Permite presença da ex (Versão atual)",
+      "B. Incentiva reaproximação",
+      "C. Age como se esposa não existisse",
+      "D. Faz convite excluindo esposa",
+      "A. “Não podia controlar quem estava lá” (Versão atual)",
+      "B. “Era só amizade”",
+      "C. “Você está exagerando”",
+      "D. “Não queria criar confusão”",
+      "A. Esposa rolando as fotos em silêncio",
+      "B. Descoberta da postagem da noite",
+      "C. Marido entrando com naturalidade após dormir fora",
+      "D. Mala colocada na porta sem discussão longa"
+    ],
+    "replaceable_sections": [
+      {
+        "title": "Motivo da Ruptura (Escolha de Prioridade)",
+        "items": [
+          "A. Dormir na casa da mãe com presença da ex (Versão atual)",
+          "B. Cancelar programa com esposa para atender família",
+          "C. Levar ex para evento familiar escondido",
+          "D. Ignorar data importante do casal"
+        ]
+      },
+      {
+        "title": "Forma da Descoberta",
+        "items": [
+          "A. Redes sociais mostrando tudo (Versão atual)",
+          "B. Story marcado por terceiros",
+          "C. Foto enviada por familiar",
+          "D. Localização compartilhada sem querer"
+        ]
+      },
+      {
+        "title": "Papel da Sogra",
+        "items": [
+          "A. Permite presença da ex (Versão atual)",
+          "B. Incentiva reaproximação",
+          "C. Age como se esposa não existisse",
+          "D. Faz convite excluindo esposa"
+        ]
+      },
+      {
+        "title": "Justificativas do Marido",
+        "items": [
+          "A. “Não podia controlar quem estava lá” (Versão atual)",
+          "B. “Era só amizade”",
+          "C. “Você está exagerando”",
+          "D. “Não queria criar confusão”"
+        ]
+      },
+      {
+        "title": "Cenas de Impacto (Ações)",
+        "items": [
+          "A. Esposa rolando as fotos em silêncio",
+          "B. Descoberta da postagem da noite",
+          "C. Marido entrando com naturalidade após dormir fora",
+          "D. Mala colocada na porta sem discussão longa"
+        ]
+      }
+    ],
+    "notes": []
+  }
+];
+  const state = { scripts: [...PRELOADED_SCRIPTS], filtered: [] };
+
+  const els = {
+    scriptsContainer: document.getElementById("scripts-container"),
+    emptyState: document.getElementById("empty-state"),
+    resultCount: document.getElementById("result-count"),
+    month: document.getElementById("filter-month"),
+    grandTheme: document.getElementById("filter-grand-theme"),
+    persona: document.getElementById("filter-persona"),
+    category: document.getElementById("filter-category"),
+    keyword: document.getElementById("filter-keyword"),
+    importPanel: document.getElementById("import-panel"),
+    toggleImport: document.getElementById("toggle-import"),
+    closeImport: document.getElementById("close-import"),
+    mdFile: document.getElementById("md-file"),
+    mdContent: document.getElementById("md-content"),
+    importBtn: document.getElementById("import-btn"),
+    importResult: document.getElementById("import-result"),
+    clearAll: document.getElementById("clear-all"),
+  };
+
+  // ── Events ────────────────────────────────────────────────────────────────
+  els.toggleImport.addEventListener("click", () => els.importPanel.classList.toggle("hidden"));
+  els.closeImport.addEventListener("click", () => els.importPanel.classList.add("hidden"));
+
+  els.mdFile.addEventListener("change", async () => {
+    const file = els.mdFile.files?.[0];
+    if (file) els.mdContent.value = await file.text();
+  });
+
+  els.importBtn.addEventListener("click", () => {
+    const markdown = els.mdContent.value.trim();
+    if (!markdown) { showImportResult("Cole um Markdown antes de importar.", true); return; }
+    const parsed = parseMarkdownScripts(markdown);
+    if (!parsed.length) { showImportResult("Nenhum bloco reconhecido. Verifique se começa com '# SCRIPT'.", true); return; }
+
+    // upsert by id
+    for (const script of parsed) {
+      const idx = state.scripts.findIndex(s => s.id === script.id);
+      if (idx >= 0) state.scripts[idx] = script;
+      else state.scripts.unshift(script);
+    }
+
+    els.mdContent.value = "";
+    els.mdFile.value = "";
+    els.importPanel.classList.add("hidden");
+    showImportResult(`${parsed.length} script${parsed.length > 1 ? "s" : ""} importado${parsed.length > 1 ? "s" : ""} com sucesso.`);
+    els.clearAll.classList.remove("hidden");
+    populateFilters();
+    applyFilters();
+  });
+
+  els.clearAll.addEventListener("click", () => {
+    if (!confirm("Limpar todos os scripts importados?")) return;
+    state.scripts = [];
+    els.clearAll.classList.add("hidden");
+    populateFilters();
+    applyFilters();
+  });
+
+  for (const el of [els.month, els.grandTheme, els.persona, els.category, els.keyword]) {
+    el.addEventListener("input", applyFilters);
+    el.addEventListener("change", applyFilters);
+  }
+
+  // ── Filters ───────────────────────────────────────────────────────────────
+  function populateFilters() {
+    fillSelect(els.month, "Todos os Meses", uniqueValues(state.scripts.map(s => s.month)));
+    fillSelect(els.grandTheme, "Todos os Grandes Temas", uniqueValues(state.scripts.map(s => s.grand_theme)));
+    fillSelect(els.persona, "Todos os Personagens", uniqueValues(state.scripts.map(s => s.persona)));
+    fillSelect(els.category, "Todas as Categorias", uniqueValues(state.scripts.map(s => s.category)));
+  }
+
+  function fillSelect(select, defaultLabel, values) {
+    const current = select.value;
+    select.innerHTML = "";
+    const opt = document.createElement("option");
+    opt.value = ""; opt.textContent = defaultLabel;
+    select.appendChild(opt);
+    values.forEach(v => {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = v;
+      if (v === current) o.selected = true;
+      select.appendChild(o);
+    });
+  }
+
+  function uniqueValues(arr) {
+    return [...new Set(arr.map(v => String(v || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  }
+
+  function applyFilters() {
+    const month = els.month.value.trim();
+    const grandTheme = els.grandTheme.value.trim();
+    const persona = els.persona.value.trim();
+    const category = els.category.value.trim();
+    const keyword = els.keyword.value.trim().toLowerCase();
+
+    state.filtered = state.scripts.filter(item => {
+      const haystack = [item.title, item.summary, item.hook, item.month, item.grand_theme, item.category, item.persona, ...(item.tags || []), ...(item.character_profiles || []), ...(item.timeline || []), ...(item.replaceable_elements || [])].join(" ").toLowerCase();
+      if (month && item.month !== month) return false;
+      if (grandTheme && item.grand_theme !== grandTheme) return false;
+      if (persona && item.persona !== persona) return false;
+      if (category && item.category !== category) return false;
+      if (keyword && !haystack.includes(keyword)) return false;
+      return true;
+    });
+
+    const total = state.scripts.length;
+    const shown = state.filtered.length;
+    els.resultCount.textContent = total === 0 ? "" : shown === total ? `${total} script${total !== 1 ? "s" : ""}` : `${shown} de ${total} script${total !== 1 ? "s" : ""}`;
+    renderScripts();
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  function renderScripts() {
+    els.scriptsContainer.innerHTML = "";
+    els.emptyState.classList.toggle("hidden", state.filtered.length > 0);
+    if (!state.filtered.length) return;
+
+    state.filtered.forEach((item, index) => {
+      const article = document.createElement("article");
+      article.className = "script-card bg-white rounded-2xl card-shadow overflow-hidden border border-gray-100 transition-all duration-300 shadow-sm";
+      article.innerHTML = `
+        <div class="p-6 cursor-pointer hover:bg-gray-50 flex justify-between items-center bg-gradient-to-r from-slate-50 to-white">
+          <div class="flex items-center gap-4">
+            <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">${index + 1}</div>
+            <div>
+              <h2 class="text-xl font-bold text-gray-900 uppercase">${esc(item.title)}</h2>
+              <p class="text-gray-500 text-sm italic">
+                ${esc(item.month || "Sem mês")} | ${esc(item.grand_theme || "Sem grande tema")}
+                ${item.persona ? ` | <span class="text-indigo-500 font-semibold not-italic">${esc(item.persona)}</span>` : ""}
+                | ${esc(item.category || "Sem categoria")}
+              </p>
+            </div>
+          </div>
+          <i class="fa-solid fa-chevron-down text-gray-400 chevron-icon transition-transform duration-300"></i>
+        </div>
+        <div class="script-content border-t bg-white">
+          <div class="p-6 bg-slate-50 border-b flex flex-wrap justify-between gap-3">
+            <div class="flex flex-wrap gap-2">${renderTags(item.tags || [])}</div>
+            <div class="flex flex-wrap gap-3">
+              ${item.source_url ? `<button data-copy="${escAttr(item.source_url)}" class="copy-btn text-blue-600 bg-white px-5 py-2.5 rounded-lg border border-blue-200 shadow-sm font-semibold"><i class="fa-solid fa-copy"></i> Copiar Link</button>` : ""}
+              ${item.source_url ? `<a href="${escAttr(item.source_url)}" target="_blank" class="text-orange-500 bg-white px-5 py-2.5 rounded-lg border border-orange-200 shadow-sm font-semibold"><i class="fa-solid fa-play"></i> Assistir</a>` : ""}
+            </div>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x">
+            <div class="p-6 space-y-6 bg-gray-50/20">
+              ${item.persona ? `<div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4"><p class="text-xs font-bold uppercase text-indigo-700 mb-1">Personagem Principal</p><p class="text-indigo-900 font-semibold text-sm">${esc(item.persona)}</p></div>` : ""}
+              <section>
+                <h3 class="text-blue-800 font-bold text-lg mb-4 border-b pb-2"><i class="fa-solid fa-users"></i> Perfis de Personagem</h3>
+                <div class="space-y-4 text-sm text-gray-700 text-justify">${renderParagraphs(item.character_profiles, "Nenhum perfil cadastrado.")}</div>
+              </section>
+              <section>
+                <h3 class="text-green-800 font-bold text-lg mb-4 border-b pb-2"><i class="fa-solid fa-clock"></i> Ritmo (Timeline)</h3>
+                <div class="space-y-3 text-xs text-gray-700 text-justify font-medium">${renderParagraphs(item.timeline, "Nenhuma timeline cadastrada.")}</div>
+              </section>
+            </div>
+            <div class="lg:col-span-2 p-6 space-y-8">
+              <section>
+                <h3 class="text-purple-800 font-bold text-lg mb-4">Elementos Substituíveis</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+                  <div class="bg-purple-50/50 p-4 rounded-xl border border-purple-100 md:col-span-2">
+                    <p class="font-bold mb-2 uppercase text-xs text-purple-900">Link e Contexto</p>
+                    <div class="space-y-2 text-gray-700">
+                      <p><strong>Mês:</strong> ${esc(item.month || "—")}</p>
+                      <p><strong>Grande Tema:</strong> ${esc(item.grand_theme || "—")}</p>
+                      <p><strong>Personagem Principal:</strong> ${esc(item.persona || "—")}</p>
+                      <p><strong>Categoria:</strong> ${esc(item.category || "—")}</p>
+                      <p><strong>Link Exemplo:</strong> ${item.source_url ? `<a href="${escAttr(item.source_url)}" target="_blank" class="text-blue-600 underline break-all">${esc(item.source_url)}</a>` : "—"}</p>
+                    </div>
+                  </div>
+                  ${renderReplaceableSections(item.replaceable_sections || [], item.replaceable_elements || [])}
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      `;
+
+      article.firstElementChild.addEventListener("click", () => article.classList.toggle("active"));
+      const copyBtn = article.querySelector(".copy-btn");
+      if (copyBtn) copyBtn.addEventListener("click", e => { e.stopPropagation(); copyLink(copyBtn.dataset.copy); });
+      els.scriptsContainer.appendChild(article);
+    });
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function renderTags(tags) {
+    if (!tags.length) return "<span class='text-xs text-slate-500 bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-sm'>Sem tags</span>";
+    return tags.map(t => `<span class="text-xs text-slate-600 bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-sm">${esc(t)}</span>`).join("");
+  }
+
+  function renderParagraphs(items, emptyText) {
+    if (!items.length) return `<p class="text-gray-500 text-sm">${esc(emptyText)}</p>`;
+    return items.map(i => `<p class="leading-7">${esc(i)}</p>`).join("");
+  }
+
+  function renderList(items, emptyText) {
+    if (!items.length) return `<p class="text-gray-500 text-sm">${esc(emptyText)}</p>`;
+    return `<ul class="space-y-2 text-gray-700">${items.map(i => `<li>${esc(i)}</li>`).join("")}</ul>`;
+  }
+
+  function renderReplaceableSections(sections, fallback) {
+    if (!sections.length) return `<div class="bg-purple-50/50 p-4 rounded-xl border border-purple-100 md:col-span-2"><p class="font-bold mb-2 uppercase text-xs text-purple-900">Elementos Variáveis</p>${renderList(fallback, "Nenhum elemento substituível cadastrado.")}</div>`;
+    return sections.map(s => `
+      <div class="bg-purple-50/50 p-4 rounded-xl border border-purple-100 ${s.items.length > 3 ? "md:col-span-2" : ""}">
+        <p class="font-bold mb-2 uppercase text-xs text-purple-900">${esc(s.title)}</p>
+        ${renderList(s.items, "Nenhum item.")}
+      </div>`).join("");
+  }
+
+  function showImportResult(msg, isError = false) {
+    els.importResult.textContent = msg;
+    els.importResult.className = isError ? "text-sm text-red-600" : "text-sm text-emerald-600";
+    setTimeout(() => els.importResult.textContent = "", 4000);
+  }
+
+  function copyLink(text) {
+    navigator.clipboard.writeText(text).catch(() => {
+      const el = document.createElement("textarea");
+      el.value = text; document.body.appendChild(el); el.select(); document.execCommand("copy"); document.body.removeChild(el);
+    });
+    const toast = document.getElementById("toast");
+    toast.className = "copy-toast show";
+    setTimeout(() => toast.className = "copy-toast", 3000);
+  }
+
+  function esc(v) {
+    return String(v || "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
+  }
+  function escAttr(v) { return esc(v); }
+
+  // init
+  populateFilters();
+  applyFilters();
+  </script>
+</body>
+</html>
