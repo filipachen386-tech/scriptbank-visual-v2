@@ -167,16 +167,36 @@ async function ensureSchema(env) {
     await env.DB.prepare(sql).run();
   }
 
-  // Migration: add persona column for existing databases (no-op if already present)
+  // Migration: add new columns for existing databases (no-op if already present)
   try {
     await env.DB.prepare("ALTER TABLE scripts ADD COLUMN persona TEXT").run();
   } catch {
     // Column already exists — ignore
   }
+  try {
+    await env.DB.prepare("ALTER TABLE scripts ADD COLUMN descricao_conteudo TEXT").run();
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    await env.DB.prepare("ALTER TABLE scripts ADD COLUMN ponto_viral TEXT").run();
+  } catch {
+    // Column already exists — ignore
+  }
 
-  // Index on persona — must run AFTER the column exists
+  // Indexes — must run AFTER the columns exist
   try {
     await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_scripts_persona ON scripts(persona)").run();
+  } catch {
+    // Index already exists or other non-critical error — ignore
+  }
+  try {
+    await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_scripts_descricao_conteudo ON scripts(descricao_conteudo)").run();
+  } catch {
+    // Index already exists or other non-critical error — ignore
+  }
+  try {
+    await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_scripts_ponto_viral ON scripts(ponto_viral)").run();
   } catch {
     // Index already exists or other non-critical error — ignore
   }
@@ -201,8 +221,8 @@ async function upsertScript(env, script) {
   const normalized = normalizeImportedScript(script);
   await env.DB.prepare(
     `
-      INSERT INTO scripts (id, created_at, title, month, grand_theme, category, persona, source_url, data_json)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO scripts (id, created_at, title, month, grand_theme, category, persona, descricao_conteudo, ponto_viral, source_url, data_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         created_at = excluded.created_at,
         title = excluded.title,
@@ -210,6 +230,8 @@ async function upsertScript(env, script) {
         grand_theme = excluded.grand_theme,
         category = excluded.category,
         persona = excluded.persona,
+        descricao_conteudo = excluded.descricao_conteudo,
+        ponto_viral = excluded.ponto_viral,
         source_url = excluded.source_url,
         data_json = excluded.data_json
     `,
@@ -222,6 +244,8 @@ async function upsertScript(env, script) {
       normalized.grand_theme,
       normalized.category,
       normalized.persona,
+      normalized.descricao_conteudo,
+      normalized.ponto_viral,
       normalized.source_url,
       JSON.stringify(normalized),
     )
@@ -235,6 +259,8 @@ function normalizeImportedScript(input) {
   const grandTheme = String(input.grand_theme || input.category || "").trim();
   const category = String(input.category || "").trim();
   const persona = String(input.persona || "").trim();
+  const descricaoConteudo = String(input.descricao_conteudo || "").trim();
+  const pontoViral = String(input.ponto_viral || "").trim();
   const sourceUrl = String(input.source_url || "").trim();
   const id = String(input.id || buildId(month, title)).trim();
 
@@ -248,6 +274,8 @@ function normalizeImportedScript(input) {
     grand_theme: grandTheme,
     category,
     persona,
+    descricao_conteudo: descricaoConteudo,
+    ponto_viral: pontoViral,
     viral_theme: String(input.viral_theme || category).trim(),
     source_url: sourceUrl,
     hook: String(input.hook || "").trim(),
@@ -332,8 +360,11 @@ function extractFirstLink(text) {
   return urlMatch ? urlMatch[0].replace(/\\_/g, "_") : "";
 }
 
-function numberedSectionPattern(number, label) {
-  return new RegExp(`^\\s*(?:\\*\\*)?#*\\s*${number}\\\\?\\.\\s*${label}(?:\\*\\*)?\\s*$`, "im");
+function sectionTitlePattern(label) {
+  // Match section title regardless of number prefix:
+  // "**1. Descrição do Conteúdo**", "1. Descrição do Conteúdo", "1\. Descrição...", etc.
+  const escaped = escapeRegExp(label);
+  return new RegExp(`^\\s*(?:\\*\\*)?\\d+(?:\\\\)?\\.?\\s*${escaped}(?:\\*\\*)?\\s*$`, "im");
 }
 
 function extractSection(markdownText, startPattern, endPatterns) {
@@ -403,21 +434,55 @@ function parseScriptBlock(blockText) {
   const title = extractMetadataValue(blockText, "Título");
   const sourceUrl = extractFirstLink(extractMetadataRaw(blockText, "Link Exemplo") || blockText);
 
-  const profilesText = extractSection(
-    blockText,
-    numberedSectionPattern(1, "Perfis de Personagem"),
-    [numberedSectionPattern(2, "Ritmo \\(Timeline\\)"), numberedSectionPattern(3, "Elementos Substituíveis")],
-  );
-  const timelineText = extractSection(
-    blockText,
-    numberedSectionPattern(2, "Ritmo \\(Timeline\\)"),
-    [numberedSectionPattern(3, "Elementos Substituíveis")],
-  );
-  const replaceableText = extractSection(
-    blockText,
-    numberedSectionPattern(3, "Elementos Substituíveis"),
-    [],
-  );
+  // Detect format: new format has "Descrição do Conteúdo" or "Ponto Viral" section title
+  const isNewFormat = sectionTitlePattern("Descrição do Conteúdo").test(blockText) ||
+                      sectionTitlePattern("Ponto Viral do Vídeo").test(blockText);
+
+  // All known section title patterns — used as end-markers for extraction
+  const allSectionPatterns = [
+    sectionTitlePattern("Descrição do Conteúdo"),
+    sectionTitlePattern("Ponto Viral do Vídeo"),
+    sectionTitlePattern("Ritmo (Timeline)"),
+    sectionTitlePattern("Elementos Substituíveis"),
+    sectionTitlePattern("Perfis de Personagem"),
+  ];
+
+  let descricaoText = "";
+  let pontoViralText = "";
+  let profilesText = "";
+  let timelineText = "";
+  let replaceableText = "";
+
+  if (isNewFormat) {
+    // New format: Descrição, Ponto Viral, Timeline, Elementos
+    descricaoText = extractSection(blockText,
+      sectionTitlePattern("Descrição do Conteúdo"),
+      allSectionPatterns.filter(p => p.source !== sectionTitlePattern("Descrição do Conteúdo").source));
+    pontoViralText = extractSection(blockText,
+      sectionTitlePattern("Ponto Viral do Vídeo"),
+      allSectionPatterns.filter(p => p.source !== sectionTitlePattern("Ponto Viral do Vídeo").source));
+    timelineText = extractSection(blockText,
+      sectionTitlePattern("Ritmo (Timeline)"),
+      allSectionPatterns.filter(p => p.source !== sectionTitlePattern("Ritmo (Timeline)").source));
+    replaceableText = extractSection(blockText,
+      sectionTitlePattern("Elementos Substituíveis"),
+      []);
+  } else {
+    // Old format: Perfis de Personagem, Timeline, Elementos
+    profilesText = extractSection(blockText,
+      sectionTitlePattern("Perfis de Personagem"),
+      allSectionPatterns.filter(p => p.source !== sectionTitlePattern("Perfis de Personagem").source));
+    timelineText = extractSection(blockText,
+      sectionTitlePattern("Ritmo (Timeline)"),
+      allSectionPatterns.filter(p => p.source !== sectionTitlePattern("Ritmo (Timeline)").source));
+    replaceableText = extractSection(blockText,
+      sectionTitlePattern("Elementos Substituíveis"),
+      []);
+  }
+
+  // For new format: use section text (multi-line), with metadata field as fallback (single-line)
+  const descricaoConteudo = descricaoText || extractMetadataValue(blockText, "Descrição do Conteúdo");
+  const pontoViral = pontoViralText || extractMetadataValue(blockText, "Ponto Viral do Vídeo");
 
   const characterProfiles = profilesText.split(/\r?\n/).map(normalizeMarkdownLine).filter(Boolean);
   const timeline = timelineText.split(/\r?\n/).map(normalizeMarkdownLine).filter(Boolean);
@@ -430,6 +495,8 @@ function parseScriptBlock(blockText) {
     grand_theme: grandTheme,
     category,
     persona,
+    descricao_conteudo: descricaoConteudo,
+    ponto_viral: pontoViral,
     viral_theme: category,
     source_url: sourceUrl,
     hook: timeline[0] || "",
@@ -445,10 +512,19 @@ function parseScriptBlock(blockText) {
 function parseMarkdownScripts(markdownText) {
   const text = String(markdownText || "").replace(/\r\n/g, "\n").trim();
   if (!text) return [];
-  const blocks = text.split(/(?=^#\s+SCRIPT\b)/gim).map((block) => block.trim()).filter(Boolean);
-  if (blocks.length) {
-    return blocks.map(parseScriptBlock).filter(Boolean);
+
+  // Try splitting on "# SCRIPT N" (old header-style delimiter)
+  const headerBlocks = text.split(/(?=^#\s+SCRIPT\b)/gim).map((block) => block.trim()).filter(Boolean);
+  if (headerBlocks.length) {
+    return headerBlocks.map(parseScriptBlock).filter(Boolean);
   }
+
+  // Try splitting on "SCRIPT N" as a standalone line (new flat-style delimiter)
+  const flatBlocks = text.split(/(?=^SCRIPT\s+\d+\s*$)/gim).map((block) => block.trim()).filter(Boolean);
+  if (flatBlocks.length) {
+    return flatBlocks.map(parseScriptBlock).filter(Boolean);
+  }
+
   return parseLegacyMarkdownScripts(text);
 }
 
@@ -524,21 +600,51 @@ function splitLegacyTitleGroupIntoScripts(category, viralTheme, title, blockText
 }
 
 function parseLegacyScriptBlock(category, viralTheme, title, blockText) {
-  const profilesText = extractSection(
-    blockText,
-    numberedSectionPattern(1, "Perfis de Personagem"),
-    [numberedSectionPattern(2, "Ritmo \\(Timeline\\)"), numberedSectionPattern(3, "Elementos Substituíveis")],
-  );
-  const timelineText = extractSection(
-    blockText,
-    numberedSectionPattern(2, "Ritmo \\(Timeline\\)"),
-    [numberedSectionPattern(3, "Elementos Substituíveis")],
-  );
-  const replaceableText = extractSection(
-    blockText,
-    numberedSectionPattern(3, "Elementos Substituíveis"),
-    [],
-  );
+  // Detect format
+  const isNewFormat = sectionTitlePattern("Descrição do Conteúdo").test(blockText) ||
+                      sectionTitlePattern("Ponto Viral do Vídeo").test(blockText);
+
+  const allSectionPatterns = [
+    sectionTitlePattern("Descrição do Conteúdo"),
+    sectionTitlePattern("Ponto Viral do Vídeo"),
+    sectionTitlePattern("Ritmo (Timeline)"),
+    sectionTitlePattern("Elementos Substituíveis"),
+    sectionTitlePattern("Perfis de Personagem"),
+  ];
+
+  let descricaoText = "";
+  let pontoViralText = "";
+  let profilesText = "";
+  let timelineText = "";
+  let replaceableText = "";
+
+  if (isNewFormat) {
+    descricaoText = extractSection(blockText,
+      sectionTitlePattern("Descrição do Conteúdo"),
+      allSectionPatterns.filter(p => p.source !== sectionTitlePattern("Descrição do Conteúdo").source));
+    pontoViralText = extractSection(blockText,
+      sectionTitlePattern("Ponto Viral do Vídeo"),
+      allSectionPatterns.filter(p => p.source !== sectionTitlePattern("Ponto Viral do Vídeo").source));
+    timelineText = extractSection(blockText,
+      sectionTitlePattern("Ritmo (Timeline)"),
+      allSectionPatterns.filter(p => p.source !== sectionTitlePattern("Ritmo (Timeline)").source));
+    replaceableText = extractSection(blockText,
+      sectionTitlePattern("Elementos Substituíveis"),
+      []);
+  } else {
+    profilesText = extractSection(blockText,
+      sectionTitlePattern("Perfis de Personagem"),
+      allSectionPatterns.filter(p => p.source !== sectionTitlePattern("Perfis de Personagem").source));
+    timelineText = extractSection(blockText,
+      sectionTitlePattern("Ritmo (Timeline)"),
+      allSectionPatterns.filter(p => p.source !== sectionTitlePattern("Ritmo (Timeline)").source));
+    replaceableText = extractSection(blockText,
+      sectionTitlePattern("Elementos Substituíveis"),
+      []);
+  }
+
+  const descricaoConteudo = descricaoText || extractMetadataValue(blockText, "Descrição do Conteúdo");
+  const pontoViral = pontoViralText || extractMetadataValue(blockText, "Ponto Viral do Vídeo");
 
   const characterProfiles = profilesText.split(/\r?\n/).map(normalizeMarkdownLine).filter(Boolean);
   const timeline = timelineText.split(/\r?\n/).map(normalizeMarkdownLine).filter(Boolean);
@@ -551,6 +657,8 @@ function parseLegacyScriptBlock(category, viralTheme, title, blockText) {
     grand_theme: String(category || "").trim(),
     category: String(viralTheme || "").trim(),
     persona: extractMetadataValue(blockText, "Personagem Principal"),
+    descricao_conteudo: extractMetadataValue(blockText, "Descrição do Conteúdo"),
+    ponto_viral: extractMetadataValue(blockText, "Ponto Viral do Vídeo"),
     viral_theme: String(viralTheme || "").trim(),
     source_url: extractFirstLink(blockText),
     hook: timeline[0] || "",

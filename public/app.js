@@ -135,6 +135,8 @@ function applyFilters() {
       item.grand_theme,
       item.category,
       item.persona,
+      item.descricao_conteudo,
+      item.ponto_viral,
       ...(item.tags || []),
       ...(item.character_profiles || []),
       ...(item.timeline || []),
@@ -185,14 +187,7 @@ function renderScripts() {
         </div>
         <div class="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x">
           <div class="p-6 space-y-8 bg-gray-50/20">
-            <section>
-              <h3 class="text-blue-800 font-bold text-lg mb-4 border-b pb-2"><i class="fa-solid fa-users"></i> Perfis de Personagem</h3>
-              <div class="space-y-4 text-sm text-gray-700 text-justify">${renderParagraphs(item.character_profiles, "Nenhum perfil cadastrado.")}</div>
-            </section>
-            <section>
-              <h3 class="text-green-800 font-bold text-lg mb-4 border-b pb-2"><i class="fa-solid fa-clock"></i> Ritmo (Timeline)</h3>
-              <div class="space-y-3 text-xs text-gray-700 text-justify font-medium">${renderParagraphs(item.timeline, "Nenhuma timeline cadastrada.")}</div>
-            </section>
+            ${renderLeftSidebar(item)}
           </div>
           <div class="lg:col-span-2 p-6 space-y-8">
             <section>
@@ -384,6 +379,44 @@ async function apiFetchJson(url, options = {}) {
 function extractHtmlTitle(text) {
   const titleMatch = String(text || "").match(/<title>([^<]+)<\/title>/i);
   return titleMatch ? titleMatch[1].trim() : "";
+}
+
+function renderLeftSidebar(item) {
+  const hasNewFields = item.descricao_conteudo || item.ponto_viral;
+  if (hasNewFields) {
+    // New format: Descrição + Ponto Viral + Timeline (no Perfis de Personagem)
+    let html = "";
+    if (item.descricao_conteudo) {
+      html += `
+        <section>
+          <h3 class="text-amber-800 font-bold text-lg mb-4 border-b pb-2"><i class="fa-solid fa-file-lines"></i> Descrição do Conteúdo</h3>
+          <div class="space-y-4 text-sm text-gray-700 text-justify leading-7">${escapeHtml(item.descricao_conteudo)}</div>
+        </section>`;
+    }
+    if (item.ponto_viral) {
+      html += `
+        <section>
+          <h3 class="text-rose-800 font-bold text-lg mb-4 border-b pb-2"><i class="fa-solid fa-fire"></i> Ponto Viral do Vídeo</h3>
+          <div class="space-y-4 text-sm text-gray-700 text-justify leading-7">${escapeHtml(item.ponto_viral)}</div>
+        </section>`;
+    }
+    html += `
+      <section>
+        <h3 class="text-green-800 font-bold text-lg mb-4 border-b pb-2"><i class="fa-solid fa-clock"></i> Ritmo (Timeline)</h3>
+        <div class="space-y-3 text-xs text-gray-700 text-justify font-medium">${renderParagraphs(item.timeline, "Nenhuma timeline cadastrada.")}</div>
+      </section>`;
+    return html;
+  }
+  // Old format: Perfis de Personagem + Timeline
+  return `
+    <section>
+      <h3 class="text-blue-800 font-bold text-lg mb-4 border-b pb-2"><i class="fa-solid fa-users"></i> Perfis de Personagem</h3>
+      <div class="space-y-4 text-sm text-gray-700 text-justify">${renderParagraphs(item.character_profiles, "Nenhum perfil cadastrado.")}</div>
+    </section>
+    <section>
+      <h3 class="text-green-800 font-bold text-lg mb-4 border-b pb-2"><i class="fa-solid fa-clock"></i> Ritmo (Timeline)</h3>
+      <div class="space-y-3 text-xs text-gray-700 text-justify font-medium">${renderParagraphs(item.timeline, "Nenhuma timeline cadastrada.")}</div>
+    </section>`;
 }
 
 function renderTags(tags) {
