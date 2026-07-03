@@ -12,6 +12,9 @@
     .script-content { display: none; }
     .script-card.active .script-content { display: block; }
     .script-card.active .chevron-icon { transform: rotate(180deg); }
+    .bookmark-btn { transition: all .2s; cursor: pointer; }
+    .bookmark-btn.active { color: #e11d48; }
+    .bookmark-btn:not(.active) { color: #cbd5e1; }
     .copy-toast { visibility: hidden; min-width: 220px; margin-left: -110px; background-color: #333; color: #fff; text-align: center; border-radius: 8px; padding: 12px; position: fixed; z-index: 100; left: 50%; bottom: 30px; }
     .copy-toast.show { visibility: visible; animation: fadein .5s, fadeout .5s 2.5s; }
     @keyframes fadein { from { bottom: 0; opacity: 0; } to { bottom: 30px; opacity: 1; } }
@@ -63,6 +66,10 @@
       <div class="min-w-[200px]">
         <label for="filter-category" class="block text-sm font-medium text-gray-700 mb-2">Categoria</label>
         <select id="filter-category" class="w-full border rounded-lg p-2.5 bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"></select>
+      </div>
+      <div class="min-w-[120px]">
+        <label class="block text-sm font-medium text-gray-700 mb-2">&nbsp;</label>
+        <button id="filter-bookmarked" class="w-full border rounded-lg p-2.5 bg-gray-50 text-left text-gray-600 hover:bg-rose-50 transition"><i class="fa-regular fa-heart text-rose-400 mr-1"></i> Favoritos</button>
       </div>
     </section>
 

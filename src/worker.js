@@ -343,6 +343,20 @@ function normalizeMarkdownLine(line) {
     .trim();
 }
 
+/** Clean markdown from multi-paragraph text (Descrição, Ponto Viral, etc.)
+ *  Uses non-greedy matching to avoid eating content between multiple ** pairs. */
+function normalizeMarkdownText(text) {
+  return String(text || "")
+    .replace(/\\\./g, ".")
+    .replace(/\\!/g, "!")
+    .replace(/\\_/g, "_")
+    .replace(/\*\*(.+?)\*\*/g, "$1")  // non-greedy bold strip
+    .replace(/\*([^*]+?)\*/g, "$1")    // non-greedy italic strip
+    .replace(/\*+/g, "")               // leftover lone asterisks
+    .replace(/\[(.*?)\]\((https?:\/\/[^\s)]+)\)/g, "$1: $2")
+    .trim();
+}
+
 function extractMetadataRaw(blockText, fieldName) {
   const pattern = new RegExp(`^\\s*\\*\\*${escapeRegExp(fieldName)}:\\*\\*\\s*(.+?)\\s*$`, "im");
   const match = blockText.match(pattern);
@@ -481,8 +495,9 @@ function parseScriptBlock(blockText) {
   }
 
   // For new format: use section text (multi-line), with metadata field as fallback (single-line)
-  const descricaoConteudo = descricaoText || extractMetadataValue(blockText, "Descrição do Conteúdo");
-  const pontoViral = pontoViralText || extractMetadataValue(blockText, "Ponto Viral do Vídeo");
+  // Apply normalizeMarkdownText to strip ** and other markdown from paragraph text
+  const descricaoConteudo = normalizeMarkdownText(descricaoText || extractMetadataRaw(blockText, "Descrição do Conteúdo"));
+  const pontoViral = normalizeMarkdownText(pontoViralText || extractMetadataRaw(blockText, "Ponto Viral do Vídeo"));
 
   const characterProfiles = profilesText.split(/\r?\n/).map(normalizeMarkdownLine).filter(Boolean);
   const timeline = timelineText.split(/\r?\n/).map(normalizeMarkdownLine).filter(Boolean);
@@ -643,8 +658,8 @@ function parseLegacyScriptBlock(category, viralTheme, title, blockText) {
       []);
   }
 
-  const descricaoConteudo = descricaoText || extractMetadataValue(blockText, "Descrição do Conteúdo");
-  const pontoViral = pontoViralText || extractMetadataValue(blockText, "Ponto Viral do Vídeo");
+  const descricaoConteudo = normalizeMarkdownText(descricaoText || extractMetadataRaw(blockText, "Descrição do Conteúdo"));
+  const pontoViral = normalizeMarkdownText(pontoViralText || extractMetadataRaw(blockText, "Ponto Viral do Vídeo"));
 
   const characterProfiles = profilesText.split(/\r?\n/).map(normalizeMarkdownLine).filter(Boolean);
   const timeline = timelineText.split(/\r?\n/).map(normalizeMarkdownLine).filter(Boolean);
