@@ -1,0 +1,753 @@
+const COOKIE_NAME = "scriptbank_upload_auth";
+const DEFAULT_PASSWORD = "kwai666";
+const THEME_LABEL_MIGRATION = {
+  "Humilhação e superação de familiares vulneráveis": "Humilhação e superação familiar",
+  "Engano familiar e exploração financeira": "Golpes e exploração na família",
+  "Disputas de poder e favoritismo na família": "Poder e favoritismo familiar",
+  "Conflitos entre gerações e dependência financeira": "Conflitos geracionais e dependência financeira",
+  "Herança familiar e teste à natureza humana": "Herança e natureza humana",
+  "Traição amorosa e flagrante em público": "Traição amorosa em público",
+  "Manipulação e engano emocional": "Manipulação emocional",
+  "Conflitos entre dinheiro e sentimentos": "Dinheiro x sentimentos",
+  "Relações de controle e dependência": "Controle e dependência",
+  "Preconceito social e reviravolta de identidade": "Preconceito e virada de identidade",
+  "Mal-entendidos e reviravoltas inesperadas": "Mal-entendidos e reviravoltas",
+  "Ostentação e arrogância desmascaradas": "Ostentação e arrogância expostas",
+  "Brincadeiras entre casais": "Brincadeiras de casal",
+  "Crítica ao materialismo e ao preconceito social": "Crítica ao materialismo e preconceito",
+  "Dilemas morais e escolhas difíceis": "Dilemas morais e escolhas",
+  "Amizade, confiança e traição": "Amizade e traição",
+  "Pressão social e reflexão coletiva": "Pressão social e reflexão",
+  "Relação entre pais e filhos e amadurecimento": "Pais, filhos e amadurecimento",
+  "Autoconhecimento e construção de valores pessoais": "Autoconhecimento e valores pessoais",
+  "Mentiras reveladas e quebra de confiança": "Mentiras e quebra de confiança",
+  "Mistério de identidade e sentimento de pertencimento": "Identidade e pertencimento",
+  "Mal-entendidos e falta de comunicação": "Falhas de comunicação",
+  "Situações de crise e autoproteção": "Crises e autoproteção",
+  "Jogos psicológicos e desafios nas relações sociais": "Jogos psicológicos e conflitos sociais",
+};
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+
+    if (url.pathname.startsWith("/api/")) {
+      return handleApi(request, env, url);
+    }
+
+    if (!env.ASSETS || typeof env.ASSETS.fetch !== "function") {
+      return new Response("Assets binding is unavailable.", { status: 500 });
+    }
+
+    return env.ASSETS.fetch(request);
+  },
+};
+
+async function handleApi(request, env, url) {
+  try {
+    if (request.method === "OPTIONS") {
+      return new Response(null, { headers: corsHeaders() });
+    }
+
+    if (url.pathname === "/api/scripts" && request.method === "GET") {
+      await ensureSchema(env);
+      const scripts = await listScripts(env);
+      return json({ scripts });
+    }
+
+    if (url.pathname === "/api/auth-status" && request.method === "GET") {
+      return json({ authenticated: isAuthenticated(request) });
+    }
+
+    if (url.pathname === "/api/login" && request.method === "POST") {
+      const body = await request.json().catch(() => ({}));
+      const password = String(body.password || "").trim();
+      if (password !== String(env.UPLOAD_PASSWORD || DEFAULT_PASSWORD)) {
+        return json({ error: "Senha incorreta." }, 403);
+      }
+      return json(
+        { ok: true },
+        200,
+        {
+          "Set-Cookie": `${COOKIE_NAME}=ok; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000`,
+        },
+      );
+    }
+
+    if (url.pathname === "/api/logout" && request.method === "POST") {
+      return json(
+        { ok: true },
+        200,
+        {
+          "Set-Cookie": `${COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`,
+        },
+      );
+    }
+
+    if (!isAuthenticated(request)) {
+      return json({ error: "Unauthorized" }, 403);
+    }
+
+    if (url.pathname === "/api/import-markdown" && request.method === "POST") {
+      await ensureSchema(env);
+      const body = await request.json().catch(() => ({}));
+      const markdown = String(body.markdown || "");
+      const scripts = parseMarkdownScripts(markdown);
+      if (!scripts.length) {
+        return json({ error: "Nenhum bloco de script reconhecido foi encontrado no Markdown." }, 400);
+      }
+      for (const script of scripts) {
+        await upsertScript(env, script);
+      }
+      return json({ ok: true, count: scripts.length });
+    }
+
+    if (url.pathname === "/api/import-json" && request.method === "POST") {
+      await ensureSchema(env);
+      const body = await request.json().catch(() => ({}));
+      const list = Array.isArray(body?.scripts) ? body.scripts : [];
+      if (!list.length) {
+        return json({ error: "JSON inválido: scripts não encontrados." }, 400);
+      }
+      const normalized = list.map(normalizeImportedScript).filter(Boolean);
+      for (const script of normalized) {
+        await upsertScript(env, script);
+      }
+      return json({ ok: true, count: normalized.length });
+    }
+
+    if (url.pathname === "/api/delete-script" && request.method === "POST") {
+      await ensureSchema(env);
+      const body = await request.json().catch(() => ({}));
+      const scriptId = String(body.script_id || "").trim();
+      if (!scriptId) {
+        return json({ error: "script_id é obrigatório." }, 400);
+      }
+      await env.DB.prepare("DELETE FROM scripts WHERE id = ?").bind(scriptId).run();
+      return json({ ok: true });
+    }
+
+    return json({ error: "Not found" }, 404);
+  } catch (error) {
+    return json(
+      {
+        error: error && error.message ? error.message : "Worker threw exception.",
+        stack: error && error.stack ? String(error.stack).split("\n").slice(0, 6) : [],
+      },
+      500,
+    );
+  }
+}
+
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  };
+}
+
+function json(payload, status = 200, extraHeaders = {}) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      ...corsHeaders(),
+      ...extraHeaders,
+    },
+  });
+}
+
+function parseCookie(headerValue) {
+  const cookies = {};
+  for (const chunk of String(headerValue || "").split(";")) {
+    const idx = chunk.indexOf("=");
+    if (idx === -1) continue;
+    const key = chunk.slice(0, idx).trim();
+    const value = chunk.slice(idx + 1).trim();
+    cookies[key] = value;
+  }
+  return cookies;
+}
+
+function isAuthenticated(request) {
+  const cookies = parseCookie(request.headers.get("Cookie"));
+  return cookies[COOKIE_NAME] === "ok";
+}
+
+async function ensureSchema(env) {
+  if (!env.DB) {
+    throw new Error("D1 binding DB is unavailable.");
+  }
+
+  // Core table + indexes on original columns — safe to re-run
+  const statements = [
+    "CREATE TABLE IF NOT EXISTS scripts (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, title TEXT NOT NULL, month TEXT, grand_theme TEXT, theme_label TEXT, category TEXT, persona TEXT, weighted_score REAL NOT NULL DEFAULT 0, source_url TEXT, data_json TEXT NOT NULL)",
+    "CREATE INDEX IF NOT EXISTS idx_scripts_created_at ON scripts(created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_scripts_month ON scripts(month)",
+    "CREATE INDEX IF NOT EXISTS idx_scripts_grand_theme ON scripts(grand_theme)",
+    "CREATE INDEX IF NOT EXISTS idx_scripts_category ON scripts(category)",
+  ];
+
+  for (const sql of statements) {
+    await env.DB.prepare(sql).run();
+  }
+
+  // Migration: add new columns for existing databases (no-op if already present)
+  try {
+    await env.DB.prepare("ALTER TABLE scripts ADD COLUMN persona TEXT").run();
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    await env.DB.prepare("ALTER TABLE scripts ADD COLUMN descricao_conteudo TEXT").run();
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    await env.DB.prepare("ALTER TABLE scripts ADD COLUMN ponto_viral TEXT").run();
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    await env.DB.prepare("ALTER TABLE scripts ADD COLUMN theme_label TEXT").run();
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    await env.DB.prepare("ALTER TABLE scripts ADD COLUMN weighted_score REAL NOT NULL DEFAULT 0").run();
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Indexes — must run AFTER the columns exist
+  try {
+    await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_scripts_persona ON scripts(persona)").run();
+  } catch {
+    // Index already exists or other non-critical error — ignore
+  }
+  try {
+    await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_scripts_descricao_conteudo ON scripts(descricao_conteudo)").run();
+  } catch {
+    // Index already exists or other non-critical error — ignore
+  }
+  try {
+    await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_scripts_ponto_viral ON scripts(ponto_viral)").run();
+  } catch {
+    // Index already exists or other non-critical error — ignore
+  }
+  try {
+    await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_scripts_theme_label ON scripts(theme_label)").run();
+  } catch {
+    // Index already exists or other non-critical error — ignore
+  }
+  try {
+    await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_scripts_weighted_score ON scripts(weighted_score)").run();
+  } catch {
+    // Index already exists or other non-critical error — ignore
+  }
+}
+
+async function listScripts(env) {
+  const result = await env.DB.prepare(
+    "SELECT data_json FROM scripts ORDER BY COALESCE(weighted_score, 0) DESC, datetime(created_at) DESC, created_at DESC, id ASC",
+  ).all();
+  return (result.results || [])
+    .map((row) => {
+      try {
+        return JSON.parse(row.data_json);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+async function upsertScript(env, script) {
+  const normalized = normalizeImportedScript(script);
+  await env.DB.prepare(
+    `
+      INSERT INTO scripts (id, created_at, title, month, grand_theme, theme_label, category, persona, weighted_score, descricao_conteudo, ponto_viral, source_url, data_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        created_at = excluded.created_at,
+        title = excluded.title,
+        month = excluded.month,
+        grand_theme = excluded.grand_theme,
+        theme_label = excluded.theme_label,
+        category = excluded.category,
+        persona = excluded.persona,
+        weighted_score = excluded.weighted_score,
+        descricao_conteudo = excluded.descricao_conteudo,
+        ponto_viral = excluded.ponto_viral,
+        source_url = excluded.source_url,
+        data_json = excluded.data_json
+    `,
+  )
+    .bind(
+      normalized.id,
+      normalized.created_at,
+      normalized.title,
+      normalized.month,
+      normalized.grand_theme,
+      normalized.theme_label,
+      normalized.category,
+      normalized.persona,
+      normalized.weighted_score,
+      normalized.descricao_conteudo,
+      normalized.ponto_viral,
+      normalized.source_url,
+      JSON.stringify(normalized),
+    )
+    .run();
+}
+
+function normalizeImportedScript(input) {
+  if (!input || typeof input !== "object") return null;
+  const title = String(input.title || "").trim();
+  const month = String(input.month || "").trim();
+  const grandTheme = String(input.grand_theme || input.category || "").trim();
+  const themeLabel = normalizeThemeLabel(input.theme_label);
+  const category = String(input.category || "").trim();
+  const persona = String(input.persona || "").trim();
+  const descricaoConteudo = String(input.descricao_conteudo || "").trim();
+  const pontoViral = String(input.ponto_viral || "").trim();
+  const numericWeightedScore = Number(input.weighted_score);
+  const weightedScore = Number.isFinite(numericWeightedScore) ? numericWeightedScore : 0;
+  const sourceUrl = String(input.source_url || "").trim();
+  const id = String(input.id || buildId(month, title)).trim();
+
+  if (!title) return null;
+
+  return {
+    id,
+    created_at: String(input.created_at || new Date().toISOString()).trim(),
+    title,
+    month,
+    grand_theme: grandTheme,
+    theme_label: themeLabel,
+    category,
+    persona,
+    descricao_conteudo: descricaoConteudo,
+    ponto_viral: pontoViral,
+    weighted_score: weightedScore,
+    viral_theme: String(input.viral_theme || category).trim(),
+    source_url: sourceUrl,
+    hook: String(input.hook || "").trim(),
+    summary: String(input.summary || [month, grandTheme, category, title].filter(Boolean).join(" | ")).trim(),
+    tags: normalizeArray(input.tags),
+    character_profiles: normalizeArray(input.character_profiles),
+    timeline: normalizeArray(input.timeline),
+    replaceable_elements: normalizeArray(input.replaceable_elements),
+    replaceable_sections: normalizeSections(input.replaceable_sections),
+    notes: normalizeArray(input.notes),
+  };
+}
+
+function normalizeThemeLabel(value) {
+  const label = String(value || "").trim();
+  return Object.prototype.hasOwnProperty.call(THEME_LABEL_MIGRATION, label) ? THEME_LABEL_MIGRATION[label] : label;
+}
+
+function normalizeArray(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  if (typeof value === "string") {
+    return value
+      .split(/\r?\n/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function normalizeSections(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((section) => {
+      if (!section || typeof section !== "object") return null;
+      const title = String(section.title || "").trim();
+      const items = normalizeArray(section.items);
+      if (!title || !items.length) return null;
+      return { title, items };
+    })
+    .filter(Boolean);
+}
+
+function buildId(month, title) {
+  return `${slugify(month || "script")}-${slugify(title || "novo-script")}-${crypto.randomUUID().slice(0, 6)}`;
+}
+
+function slugify(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, "")
+    .trim()
+    .replace(/[-\s]+/g, "-") || "script";
+}
+
+function normalizeMarkdownLine(line) {
+  return String(line || "")
+    .trim()
+    .replace(/^\s*[-*]\s*/, "")
+    .replace(/^\s*\d+\.\s*/, "")
+    .replace(/\\\./g, ".")
+    .replace(/\\!/g, "!")
+    .replace(/\\_/g, "_")
+    .replace(/\*\*(.*?)\*\*/g, "$1")   // paired bold: **text**
+    .replace(/\*([^*]+)\*/g, "$1")      // paired italic: *text*
+    .replace(/\*+/g, "")               // leftover lone asterisks
+    .replace(/\[(.*?)\]\((https?:\/\/[^\s)]+)\)/g, "$1: $2")
+    .replace(/\s{2,}$/g, "")
+    .trim();
+}
+
+/** Clean markdown from multi-paragraph text (Descrição, Ponto Viral, etc.)
+ *  Uses non-greedy matching to avoid eating content between multiple ** pairs. */
+function normalizeMarkdownText(text) {
+  return String(text || "")
+    .replace(/\\\./g, ".")
+    .replace(/\\!/g, "!")
+    .replace(/\\_/g, "_")
+    .replace(/\*\*(.+?)\*\*/g, "$1")  // non-greedy bold strip
+    .replace(/\*([^*]+?)\*/g, "$1")    // non-greedy italic strip
+    .replace(/\*+/g, "")               // leftover lone asterisks
+    .replace(/\[(.*?)\]\((https?:\/\/[^\s)]+)\)/g, "$1: $2")
+    .trim();
+}
+
+function extractMetadataRaw(blockText, fieldName) {
+  const pattern = new RegExp(`^\\s*\\*\\*${escapeRegExp(fieldName)}:\\*\\*\\s*(.+?)\\s*$`, "im");
+  const match = blockText.match(pattern);
+  return match ? match[1].trim() : "";
+}
+
+function extractMetadataValue(blockText, fieldName) {
+  return normalizeMarkdownLine(extractMetadataRaw(blockText, fieldName));
+}
+
+function extractFirstLink(text) {
+  const markdownMatch = text.match(/\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/);
+  if (markdownMatch) return markdownMatch[1].replace(/\\_/g, "_");
+  const urlMatch = text.match(/https?:\/\/[^\s)\]]+/);
+  return urlMatch ? urlMatch[0].replace(/\\_/g, "_") : "";
+}
+
+function sectionTitlePattern(label) {
+  // Match section title regardless of number prefix:
+  // "**1. Descrição do Conteúdo**", "1. Descrição do Conteúdo", "1\. Descrição...", etc.
+  const escaped = escapeRegExp(label);
+  return new RegExp(`^\\s*(?:\\*\\*)?\\d+(?:\\\\)?\\.?\\s*${escaped}(?:\\*\\*)?\\s*$`, "im");
+}
+
+function extractSection(markdownText, startPattern, endPatterns) {
+  const startMatch = markdownText.match(startPattern);
+  if (!startMatch || startMatch.index == null) return "";
+  const start = startMatch.index + startMatch[0].length;
+  let end = markdownText.length;
+  const slice = markdownText.slice(start);
+  for (const pattern of endPatterns) {
+    const match = slice.match(pattern);
+    if (match && match.index != null) {
+      end = Math.min(end, start + match.index);
+    }
+  }
+  return markdownText.slice(start, end).trim();
+}
+
+function parseReplaceableSections(sectionText) {
+  // Generic strategy: any line that is immediately followed by "A. " style
+  // option lines is treated as a section title — no whitelist needed.
+  const lines = sectionText.split(/\r?\n/);
+
+  // Identify which line indices are section titles:
+  // a line is a title if it is non-empty, not itself an option line (A./B./C./D.),
+  // and the next non-empty line starts with a letter-option pattern.
+  const optionLineRe = /^\s*(?:\*\*)?[A-Z]\.\s/;
+  const titleIndices = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    if (optionLineRe.test(line)) continue; // it's an option, not a title
+
+    // look ahead for the next non-empty line
+    let j = i + 1;
+    while (j < lines.length && !lines[j].trim()) j++;
+    if (j < lines.length && optionLineRe.test(lines[j].trim())) {
+      titleIndices.push(i);
+    }
+  }
+
+  if (!titleIndices.length) {
+    // fallback: dump everything as flat list
+    const fallback = lines.map(normalizeMarkdownLine).filter(Boolean);
+    return fallback.length ? [{ title: "Elementos Substituíveis", items: fallback }] : [];
+  }
+
+  const sections = [];
+  for (let t = 0; t < titleIndices.length; t++) {
+    const titleLineIdx = titleIndices[t];
+    const nextTitleIdx = t + 1 < titleIndices.length ? titleIndices[t + 1] : lines.length;
+    const rawTitle = normalizeMarkdownLine(lines[titleLineIdx]);
+    const items = lines
+      .slice(titleLineIdx + 1, nextTitleIdx)
+      .map(normalizeMarkdownLine)
+      .filter(Boolean);
+    if (rawTitle && items.length) sections.push({ title: rawTitle, items });
+  }
+  return sections;
+}
+
+function parseScriptBlock(blockText) {
+  const month = extractMetadataValue(blockText, "Mês");
+  const grandTheme = extractMetadataValue(blockText, "Grande Tema");
+  const themeLabel = extractMetadataValue(blockText, "Rótulo do tema");
+  const category = extractMetadataValue(blockText, "Categoria do tema") || extractMetadataValue(blockText, "Categoria");
+  const persona = extractMetadataValue(blockText, "Personagem Principal");
+  const weightedScore = extractMetadataValue(blockText, "Pontuação Ponderada") || extractMetadataValue(blockText, "Weighted Score");
+  const title = extractMetadataValue(blockText, "Título");
+  const sourceUrl = extractFirstLink(extractMetadataRaw(blockText, "Link Exemplo") || blockText);
+
+  // Detect format: new format has "Descrição do Conteúdo" or "Ponto Viral" section title
+  const isNewFormat = sectionTitlePattern("Descrição do Conteúdo").test(blockText) ||
+                      sectionTitlePattern("Ponto Viral do Vídeo").test(blockText);
+
+  // All known section title patterns — used as end-markers for extraction
+  const allSectionPatterns = [
+    sectionTitlePattern("Descrição do Conteúdo"),
+    sectionTitlePattern("Ponto Viral do Vídeo"),
+    sectionTitlePattern("Ritmo (Timeline)"),
+    sectionTitlePattern("Elementos Substituíveis"),
+    sectionTitlePattern("Perfis de Personagem"),
+  ];
+
+  let descricaoText = "";
+  let pontoViralText = "";
+  let profilesText = "";
+  let timelineText = "";
+  let replaceableText = "";
+
+  if (isNewFormat) {
+    // New format: Descrição, Ponto Viral, Timeline, Elementos
+    descricaoText = extractSection(blockText,
+      sectionTitlePattern("Descrição do Conteúdo"),
+      allSectionPatterns.filter(p => p.source !== sectionTitlePattern("Descrição do Conteúdo").source));
+    pontoViralText = extractSection(blockText,
+      sectionTitlePattern("Ponto Viral do Vídeo"),
+      allSectionPatterns.filter(p => p.source !== sectionTitlePattern("Ponto Viral do Vídeo").source));
+    timelineText = extractSection(blockText,
+      sectionTitlePattern("Ritmo (Timeline)"),
+      allSectionPatterns.filter(p => p.source !== sectionTitlePattern("Ritmo (Timeline)").source));
+    replaceableText = extractSection(blockText,
+      sectionTitlePattern("Elementos Substituíveis"),
+      []);
+  } else {
+    // Old format: Perfis de Personagem, Timeline, Elementos
+    profilesText = extractSection(blockText,
+      sectionTitlePattern("Perfis de Personagem"),
+      allSectionPatterns.filter(p => p.source !== sectionTitlePattern("Perfis de Personagem").source));
+    timelineText = extractSection(blockText,
+      sectionTitlePattern("Ritmo (Timeline)"),
+      allSectionPatterns.filter(p => p.source !== sectionTitlePattern("Ritmo (Timeline)").source));
+    replaceableText = extractSection(blockText,
+      sectionTitlePattern("Elementos Substituíveis"),
+      []);
+  }
+
+  // For new format: use section text (multi-line), with metadata field as fallback (single-line)
+  // Apply normalizeMarkdownText to strip ** and other markdown from paragraph text
+  const descricaoConteudo = normalizeMarkdownText(descricaoText || extractMetadataRaw(blockText, "Descrição do Conteúdo"));
+  const pontoViral = normalizeMarkdownText(pontoViralText || extractMetadataRaw(blockText, "Ponto Viral do Vídeo"));
+
+  const characterProfiles = profilesText.split(/\r?\n/).map(normalizeMarkdownLine).filter(Boolean);
+  const timeline = timelineText.split(/\r?\n/).map(normalizeMarkdownLine).filter(Boolean);
+  const replaceableSections = parseReplaceableSections(replaceableText);
+  const replaceableElements = replaceableSections.flatMap((section) => section.items || []);
+
+  return normalizeImportedScript({
+    title,
+    month,
+    grand_theme: grandTheme,
+    theme_label: themeLabel,
+    category,
+    persona,
+    weighted_score: weightedScore,
+    descricao_conteudo: descricaoConteudo,
+    ponto_viral: pontoViral,
+    viral_theme: category,
+    source_url: sourceUrl,
+    hook: timeline[0] || "",
+    summary: [month, grandTheme, category, title].filter(Boolean).join(" | "),
+    character_profiles: characterProfiles,
+    timeline,
+    replaceable_elements: replaceableElements,
+    replaceable_sections: replaceableSections,
+    notes: [],
+  });
+}
+
+function parseMarkdownScripts(markdownText) {
+  const text = String(markdownText || "").replace(/\r\n/g, "\n").trim();
+  if (!text) return [];
+
+  // Try splitting on "# SCRIPT N" (old header-style delimiter)
+  const headerBlocks = text.split(/(?=^#\s+SCRIPT\b)/gim).map((block) => block.trim()).filter(Boolean);
+  if (headerBlocks.length) {
+    return headerBlocks.map(parseScriptBlock).filter(Boolean);
+  }
+
+  // Try splitting on "SCRIPT N" as a standalone line (new flat-style delimiter)
+  const flatBlocks = text.split(/(?=^SCRIPT\s+\d+\s*$)/gim).map((block) => block.trim()).filter(Boolean);
+  if (flatBlocks.length) {
+    return flatBlocks.map(parseScriptBlock).filter(Boolean);
+  }
+
+  return parseLegacyMarkdownScripts(text);
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function parseLegacyMarkdownScripts(text) {
+  let currentCategory = "";
+  let currentViral = "";
+  let currentTitle = "";
+  let currentLines = [];
+  const scripts = [];
+
+  function flushCurrent() {
+    if (!currentTitle) return;
+    const blockText = currentLines.join("\n").trim();
+    scripts.push(...splitLegacyTitleGroupIntoScripts(currentCategory, currentViral, currentTitle, blockText));
+    currentTitle = "";
+    currentLines = [];
+  }
+
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.replace(/\s+$/, "");
+    const titleMatch = line.match(/^###\s+\*\*(.+?)\*\*\s*$/) || line.match(/^###\s+(.+)$/);
+    const viralMatch = !line.startsWith("###") ? line.match(/^##\s+(.+)$/) : null;
+    const categoryMatch = !line.startsWith("##") ? line.match(/^#\s+(.+)$/) : null;
+
+    if (titleMatch) {
+      flushCurrent();
+      currentTitle = String(titleMatch[1] || "").trim();
+      currentLines = [line];
+      continue;
+    }
+
+    if (viralMatch) {
+      flushCurrent();
+      currentViral = String(viralMatch[1] || "").trim();
+      continue;
+    }
+
+    if (categoryMatch) {
+      flushCurrent();
+      currentCategory = String(categoryMatch[1] || "").trim();
+      continue;
+    }
+
+    if (currentTitle) {
+      currentLines.push(line);
+    }
+  }
+
+  flushCurrent();
+  return scripts.filter(Boolean);
+}
+
+function splitLegacyTitleGroupIntoScripts(category, viralTheme, title, blockText) {
+  const linkMatches = [...blockText.matchAll(/^(?:link\d*|link)\s*:\s*.*$/gim)];
+  if (!linkMatches.length) {
+    const single = parseLegacyScriptBlock(category, viralTheme, title, blockText);
+    return single ? [single] : [];
+  }
+
+  const scripts = [];
+  for (let index = 0; index < linkMatches.length; index += 1) {
+    const start = linkMatches[index].index || 0;
+    const end = index + 1 < linkMatches.length ? linkMatches[index + 1].index || blockText.length : blockText.length;
+    const segment = blockText.slice(start, end).trim();
+    const parsed = parseLegacyScriptBlock(category, viralTheme, title, segment);
+    if (parsed) scripts.push(parsed);
+  }
+  return scripts;
+}
+
+function parseLegacyScriptBlock(category, viralTheme, title, blockText) {
+  // Detect format
+  const isNewFormat = sectionTitlePattern("Descrição do Conteúdo").test(blockText) ||
+                      sectionTitlePattern("Ponto Viral do Vídeo").test(blockText);
+
+  const allSectionPatterns = [
+    sectionTitlePattern("Descrição do Conteúdo"),
+    sectionTitlePattern("Ponto Viral do Vídeo"),
+    sectionTitlePattern("Ritmo (Timeline)"),
+    sectionTitlePattern("Elementos Substituíveis"),
+    sectionTitlePattern("Perfis de Personagem"),
+  ];
+
+  let descricaoText = "";
+  let pontoViralText = "";
+  let profilesText = "";
+  let timelineText = "";
+  let replaceableText = "";
+
+  if (isNewFormat) {
+    descricaoText = extractSection(blockText,
+      sectionTitlePattern("Descrição do Conteúdo"),
+      allSectionPatterns.filter(p => p.source !== sectionTitlePattern("Descrição do Conteúdo").source));
+    pontoViralText = extractSection(blockText,
+      sectionTitlePattern("Ponto Viral do Vídeo"),
+      allSectionPatterns.filter(p => p.source !== sectionTitlePattern("Ponto Viral do Vídeo").source));
+    timelineText = extractSection(blockText,
+      sectionTitlePattern("Ritmo (Timeline)"),
+      allSectionPatterns.filter(p => p.source !== sectionTitlePattern("Ritmo (Timeline)").source));
+    replaceableText = extractSection(blockText,
+      sectionTitlePattern("Elementos Substituíveis"),
+      []);
+  } else {
+    profilesText = extractSection(blockText,
+      sectionTitlePattern("Perfis de Personagem"),
+      allSectionPatterns.filter(p => p.source !== sectionTitlePattern("Perfis de Personagem").source));
+    timelineText = extractSection(blockText,
+      sectionTitlePattern("Ritmo (Timeline)"),
+      allSectionPatterns.filter(p => p.source !== sectionTitlePattern("Ritmo (Timeline)").source));
+    replaceableText = extractSection(blockText,
+      sectionTitlePattern("Elementos Substituíveis"),
+      []);
+  }
+
+  const descricaoConteudo = normalizeMarkdownText(descricaoText || extractMetadataRaw(blockText, "Descrição do Conteúdo"));
+  const pontoViral = normalizeMarkdownText(pontoViralText || extractMetadataRaw(blockText, "Ponto Viral do Vídeo"));
+
+  const characterProfiles = profilesText.split(/\r?\n/).map(normalizeMarkdownLine).filter(Boolean);
+  const timeline = timelineText.split(/\r?\n/).map(normalizeMarkdownLine).filter(Boolean);
+  const replaceableSections = parseReplaceableSections(replaceableText);
+  const replaceableElements = replaceableSections.flatMap((section) => section.items || []);
+
+  return normalizeImportedScript({
+    title: String(title || "").trim(),
+    month: "",
+    grand_theme: String(category || "").trim(),
+    theme_label: extractMetadataValue(blockText, "Rótulo do tema"),
+    category: String(viralTheme || "").trim(),
+    persona: extractMetadataValue(blockText, "Personagem Principal"),
+    weighted_score: extractMetadataValue(blockText, "Pontuação Ponderada") || extractMetadataValue(blockText, "Weighted Score"),
+    descricao_conteudo: extractMetadataValue(blockText, "Descrição do Conteúdo"),
+    ponto_viral: extractMetadataValue(blockText, "Ponto Viral do Vídeo"),
+    viral_theme: String(viralTheme || "").trim(),
+    source_url: extractFirstLink(blockText),
+    hook: timeline[0] || "",
+    summary: [category, viralTheme, title].filter(Boolean).join(" | "),
+    character_profiles: characterProfiles,
+    timeline,
+    replaceable_elements: replaceableElements,
+    replaceable_sections: replaceableSections,
+    notes: [],
+  });
+}
